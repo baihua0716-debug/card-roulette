@@ -31,5 +31,13 @@ http://127.0.0.1:8000/
 
 - `index.html`：网页入口。
 - `styles.css`：响应式游戏界面样式。
-- `app.js`：完整游戏规则、技能效果和电脑 AI。
+- `game-core.js`：游戏规则、技能效果、状态机和电脑 AI。
+- `app.js`：DOM 渲染和玩家交互绑定。
+- `tests/state-machine-regression.mjs`：核心状态机回归测试。
 - `streamlit_devil_card_game.py`：原 Streamlit 版本，保留作参考。
+
+## 回归测试
+
+```powershell
+node tests/state-machine-regression.mjs
+```
