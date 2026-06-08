@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="黑卡 / 白卡概率博弈网页游戏" />
+    <title>卡牌轮盘</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">GitHub Pages 版</p>
+          <h1>卡牌轮盘</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="rulesButton" type="button" title="查看规则">
+            <span aria-hidden="true">?</span>
+            <span>规则</span>
+          </button>
+          <button class="icon-button reset-button" id="resetButton" type="button" title="重新开始">
+            <span aria-hidden="true">↻</span>
+            <span>重开</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="game-layout">
+        <section class="arena" aria-label="对局">
+          <div class="duelist duelist-computer" id="computerPanel"></div>
+
+          <div class="deck-zone">
+            <div class="turn-banner" id="turnBanner"></div>
+            <div class="deck-visual" id="deckVisual" aria-hidden="true">
+              <span class="deck-card card-back card-back-1"></span>
+              <span class="deck-card card-back card-back-2"></span>
+              <span class="deck-card card-front" id="knownCardFace">?</span>
+            </div>
+            <div class="deck-stats" id="deckStats"></div>
+            <div class="intel-box" id="intelBox"></div>
+          </div>
+
+          <div class="duelist duelist-player" id="playerPanel"></div>
+        </section>
+
+        <aside class="side-panel" aria-label="操作面板">
+          <section class="action-section">
+            <div class="section-heading">
+              <h2>行动</h2>
+              <span id="actionState"></span>
+            </div>
+            <div class="button-grid" id="actionButtons"></div>
+          </section>
+
+          <section class="skill-section">
+            <div class="section-heading">
+              <h2>你的技能</h2>
+              <span id="skillCount"></span>
+            </div>
+            <div class="skill-list" id="playerSkills"></div>
+            <label class="take-target hidden" id="takeTargetWrap">
+              <span>夺取目标</span>
+              <select id="takeTargetSelect"></select>
+            </label>
+            <button class="primary full-width" id="useSkillButton" type="button" title="使用当前选中的技能">
+              <span aria-hidden="true">✦</span>
+              <span>使用技能</span>
+            </button>
+          </section>
+
+          <section class="skill-section compact">
+            <div class="section-heading">
+              <h2>电脑技能</h2>
+              <span id="computerSkillCount"></span>
+            </div>
+            <div class="opponent-skills" id="computerSkills"></div>
+          </section>
+        </aside>
+
+        <section class="log-panel" aria-label="对局日志">
+          <div class="section-heading">
+            <h2>对局日志</h2>
+            <button class="small-button" id="clearLogButton" type="button" title="清空当前日志视图">
+              <span aria-hidden="true">×</span>
+              <span>清空</span>
+            </button>
+          </div>
+          <ol id="logList" class="log-list"></ol>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="rulesDialog" class="rules-dialog">
+      <div class="dialog-head">
+        <h2>规则与技能</h2>
+        <button class="icon-only" id="closeRulesButton" type="button" title="关闭规则">×</button>
+      </div>
+      <div class="rules-content">
+        <h3>基础规则</h3>
+        <ol>
+          <li>每轮随机生成 3 到 8 张黑卡和白卡，并打乱顺序。</li>
+          <li>黑卡造成 1 点基础伤害，白卡不造成伤害。</li>
+          <li>对电脑出牌后交给电脑；对己方出牌若是白卡可继续行动，若是黑卡则结束回合。</li>
+          <li>任意一方血量归零，对局结束。</li>
+          <li>每次重新生成牌序时，双方各获得随机技能，最多持有 8 个。</li>
+        </ol>
+        <h3>技能效果</h3>
+        <div id="rulesSkills" class="rules-skills"></div>
+      </div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

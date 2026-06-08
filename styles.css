@@ -1,0 +1,732 @@
+:root {
+  color-scheme: dark;
+  --bg: #111311;
+  --surface: #191d1a;
+  --surface-2: #20251f;
+  --surface-3: #282420;
+  --line: #3a443c;
+  --line-strong: #63705d;
+  --text: #f6f2e8;
+  --muted: #b7c0ad;
+  --green: #117764;
+  --green-deep: #0e4f47;
+  --red: #b52b45;
+  --red-deep: #741f31;
+  --gold: #d7b45a;
+  --gold-deep: #6d5622;
+  --white-card: #f6f1e7;
+  --black-card: #151515;
+  --shadow: 0 18px 60px rgba(0, 0, 0, 0.34);
+  --radius: 8px;
+  --focus: 0 0 0 3px rgba(215, 180, 90, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--bg);
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  color: var(--text);
+  font-family:
+    Inter, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  background:
+    linear-gradient(90deg, rgba(17, 119, 100, 0.18) 0, transparent 32%),
+    linear-gradient(180deg, #101310 0, #161616 48%, #101310 100%);
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--gold);
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: #151815;
+  padding: 0 12px;
+}
+
+.app-shell {
+  width: min(1440px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 2.35rem;
+  line-height: 1.08;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+h3 {
+  margin-bottom: 8px;
+  font-size: 0.98rem;
+}
+
+.topbar-actions,
+.section-heading,
+.button-grid,
+.effects,
+.stats-row,
+.pill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.icon-button,
+.primary,
+.small-button,
+.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.icon-only {
+  width: 44px;
+  padding: 0;
+}
+
+.reset-button {
+  border-color: rgba(215, 180, 90, 0.55);
+}
+
+.primary {
+  border-color: var(--gold);
+  color: #17140e;
+  background: var(--gold);
+  font-weight: 800;
+}
+
+.primary:hover:not(:disabled) {
+  background: #efca6e;
+}
+
+.danger {
+  border-color: rgba(181, 43, 69, 0.72);
+  background: var(--red-deep);
+}
+
+.ghost {
+  background: transparent;
+}
+
+.small-button {
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: auto 310px;
+  gap: 18px;
+}
+
+.arena,
+.side-panel,
+.log-panel,
+.rules-dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(25, 29, 26, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.arena {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(240px, 0.88fr) minmax(210px, 1fr);
+  gap: 18px;
+  min-height: 570px;
+  padding: 18px;
+  background:
+    linear-gradient(90deg, rgba(14, 79, 71, 0.72), rgba(17, 119, 100, 0.78)),
+    var(--green-deep);
+}
+
+.duelist,
+.deck-zone,
+.side-panel,
+.log-panel {
+  min-width: 0;
+}
+
+.duelist {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(246, 242, 232, 0.15);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: rgba(17, 19, 17, 0.62);
+}
+
+.duelist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.duelist-name {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.duelist-role {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.hp-number {
+  min-width: 56px;
+  text-align: right;
+  color: var(--gold);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.health-track {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(246, 242, 232, 0.18);
+  border-radius: 999px;
+  background: #111311;
+}
+
+.health-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--red);
+  transition: width 220ms ease;
+}
+
+.stats-row {
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.stat {
+  min-width: 92px;
+  flex: 1 1 92px;
+  border: 1px solid rgba(246, 242, 232, 0.13);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.stat strong {
+  display: block;
+  min-height: 28px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.effects {
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(215, 180, 90, 0.38);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--text);
+  background: rgba(215, 180, 90, 0.12);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.pill-muted {
+  border-color: rgba(183, 192, 173, 0.28);
+  color: var(--muted);
+  background: rgba(183, 192, 173, 0.08);
+}
+
+.deck-zone {
+  display: grid;
+  grid-template-rows: auto minmax(190px, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  border-radius: var(--radius);
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(17, 19, 17, 0.74), rgba(17, 19, 17, 0.42)),
+    repeating-linear-gradient(90deg, rgba(246, 242, 232, 0.04) 0, rgba(246, 242, 232, 0.04) 1px, transparent 1px, transparent 26px);
+}
+
+.turn-banner {
+  min-height: 42px;
+  border: 1px solid rgba(246, 242, 232, 0.16);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  text-align: center;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.18);
+  font-weight: 800;
+}
+
+.deck-visual {
+  position: relative;
+  width: min(180px, 70vw);
+  aspect-ratio: 5 / 7;
+  margin: 0 auto;
+}
+
+.deck-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 2px solid rgba(246, 242, 232, 0.85);
+  box-shadow: 0 20px 30px rgba(0, 0, 0, 0.38);
+}
+
+.card-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(246, 242, 232, 0.16) 0 8px, transparent 8px 16px),
+    var(--red);
+}
+
+.card-back-1 {
+  transform: rotate(-7deg) translate(-10px, 10px);
+}
+
+.card-back-2 {
+  transform: rotate(5deg) translate(9px, 6px);
+}
+
+.card-front {
+  color: #171717;
+  background: var(--white-card);
+  font-size: 3.1rem;
+  font-weight: 900;
+}
+
+.card-front.is-black {
+  color: var(--white-card);
+  background: var(--black-card);
+}
+
+.card-front.is-unknown {
+  color: var(--gold);
+  background:
+    radial-gradient(circle at center, transparent 0 34%, rgba(215, 180, 90, 0.22) 35% 38%, transparent 39%),
+    var(--black-card);
+}
+
+.deck-stats,
+.intel-box {
+  min-height: 58px;
+  border: 1px solid rgba(246, 242, 232, 0.16);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.deck-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  text-align: center;
+}
+
+.deck-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.deck-stats strong {
+  display: block;
+  font-size: 1.15rem;
+}
+
+.intel-box {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.intel-box strong {
+  color: var(--text);
+}
+
+.side-panel,
+.log-panel {
+  padding: 16px;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.section-heading {
+  justify-content: space-between;
+  min-height: 36px;
+  margin-bottom: 12px;
+}
+
+.section-heading span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.button-grid {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.button-grid button {
+  flex: 1 1 150px;
+}
+
+.skill-list,
+.opponent-skills {
+  display: grid;
+  gap: 8px;
+}
+
+.skill-list {
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.skill-card,
+.opponent-skill {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
+.skill-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  text-align: left;
+}
+
+.skill-card strong,
+.opponent-skill strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.skill-card span,
+.opponent-skill span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.skill-card.is-selected {
+  border-color: var(--gold);
+  background: #2b281d;
+}
+
+.skill-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: #17140e;
+  background: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.opponent-skill {
+  min-height: 44px;
+}
+
+.take-target {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.empty-state {
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.12);
+  text-align: center;
+}
+
+.log-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.log-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0 26px;
+  overflow: auto;
+  color: var(--muted);
+}
+
+.log-list li {
+  margin-bottom: 7px;
+  padding-left: 4px;
+  overflow-wrap: anywhere;
+}
+
+.log-list li:first-child {
+  color: var(--text);
+}
+
+.rules-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  padding: 0;
+  color: var(--text);
+}
+
+.rules-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px;
+}
+
+.dialog-head h2 {
+  font-size: 1.2rem;
+}
+
+.rules-content {
+  max-height: calc(100vh - 130px);
+  overflow: auto;
+  padding: 16px;
+}
+
+.rules-content ol {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  color: var(--muted);
+}
+
+.rules-content li {
+  margin-bottom: 8px;
+}
+
+.rules-skills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rules-skill {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
+.rules-skill strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.rules-skill span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 1100px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 320px;
+  }
+
+  .arena {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .deck-zone {
+    grid-row: 2;
+  }
+
+  .duelist-computer {
+    grid-row: 1;
+  }
+
+  .duelist-player {
+    grid-row: 3;
+  }
+
+  .log-panel {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  h1 {
+    font-size: 1.9rem;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-actions button {
+    flex: 1 1 130px;
+  }
+
+  .arena,
+  .side-panel,
+  .log-panel {
+    padding: 12px;
+  }
+
+  .deck-zone {
+    padding: 14px;
+  }
+
+  .deck-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .rules-skills {
+    grid-template-columns: 1fr;
+  }
+}
