@@ -1,21 +1,46 @@
 # 卡牌轮盘
 
-一个可直接部署到 GitHub Pages 的公开网页游戏。玩法来自原 Streamlit 版本：黑卡 / 白卡概率博弈、技能系统、电脑 AI。
+卡牌轮盘是一个黑卡 / 白卡概率博弈网页游戏。玩家和电脑轮流从未知牌序中出牌，通过判断概率、使用技能、管理血量来击败对方。
 
-## 在线部署
+游戏已经改造成纯静态网页，可直接部署到 GitHub Pages，不需要后端服务、Streamlit 或构建步骤。
 
-1. 把本目录提交并推送到 GitHub 仓库。
-2. 打开仓库的 `Settings`。
-3. 进入 `Pages`。
-4. 在 `Build and deployment` 中选择 `Deploy from a branch`。
-5. Branch 选择 `main` 或你的默认分支，目录选择 `/root`。
-6. 保存后等待 GitHub Pages 生成站点。
+在线游玩：<https://baihua0716-debug.github.io/card-roulette/>
 
-入口文件是 `index.html`，不需要安装 Python、Streamlit、Node 或任何构建工具。
+## 基本规则
+
+1. 每轮会随机生成 3 到 8 张牌，牌堆中至少有 1 张黑卡和 1 张白卡。
+2. 黑卡会造成伤害，白卡不会造成伤害。
+3. 玩家可以选择“对电脑出牌”或“对己方出牌”。
+4. 对电脑出牌后，无论抽到黑卡还是白卡，都会进入电脑回合。
+5. 对己方出牌时，如果抽到白卡，可以继续行动；如果抽到黑卡，会对自己造成伤害并结束回合。
+6. 双方初始血量为 4。任意一方血量归零，对局结束。
+7. 当前牌堆抽空后，会生成新一轮牌序，并由玩家先行动。
+8. 每次生成新牌序时，双方各获得若干随机技能，最多持有 8 个。
+
+## 技能说明
+
+- 探测：查看当前这一张牌是黑卡还是白卡。
+- 洗牌：洗掉当前这一张牌，并公开它是黑卡还是白卡。
+- 疗愈：回复 1 点血量，不能超过血量上限。
+- 增幅：下一张由使用者打出的黑卡造成 2 点伤害；如果打出白卡，状态保留。
+- 冻结：让另一方跳过下一个回合。
+- 预示：随机预知未来某一张牌的信息，不包括当前这一张。
+- 转换：把当前这一张黑卡变成白卡，或把白卡变成黑卡。
+- 夺取：夺取另一方一个技能，并立即使用它。不能连续夺取“夺取”。
+- 超频：立刻失去 1 点血量。下一次出牌若为黑卡则造成 3 点伤害；若为白卡，超频状态也会消耗。
+
+## 项目结构
+
+- `index.html`：网页入口。
+- `styles.css`：响应式界面样式。
+- `game-core.js`：游戏规则、技能效果、状态机和电脑 AI。
+- `app.js`：DOM 渲染和玩家交互绑定。
+- `tests/state-machine-regression.mjs`：核心状态机回归测试。
+- `streamlit_devil_card_game.py`：原 Streamlit 版本，保留作参考。
 
 ## 本地预览
 
-在当前目录运行任意静态服务器即可，例如：
+在项目根目录运行任意静态服务器即可，例如：
 
 ```powershell
 python -m http.server 8000
@@ -27,17 +52,19 @@ python -m http.server 8000
 http://127.0.0.1:8000/
 ```
 
-## 文件说明
-
-- `index.html`：网页入口。
-- `styles.css`：响应式游戏界面样式。
-- `game-core.js`：游戏规则、技能效果、状态机和电脑 AI。
-- `app.js`：DOM 渲染和玩家交互绑定。
-- `tests/state-machine-regression.mjs`：核心状态机回归测试。
-- `streamlit_devil_card_game.py`：原 Streamlit 版本，保留作参考。
-
 ## 回归测试
 
 ```powershell
 node tests/state-machine-regression.mjs
 ```
+
+如果系统 `node` 不可用，也可以使用 Codex bundled Node 运行同一个测试。
+
+## GitHub Pages 部署
+
+1. 将项目推送到 GitHub 仓库。
+2. 打开仓库 `Settings`。
+3. 进入 `Pages`。
+4. 在 `Build and deployment` 中选择 `Deploy from a branch`。
+5. Branch 选择 `main`，目录选择 `/root`。
+6. 保存后等待 GitHub Pages 构建完成。
