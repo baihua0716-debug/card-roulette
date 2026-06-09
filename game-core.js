@@ -52,7 +52,7 @@ const SKILL_DESCRIPTIONS = Object.freeze({
   [Skill.HEAL]: "回复 1 点血量，不能超过血量上限。",
   [Skill.AMPLIFY]: "进入增幅状态：下一张由使用者打出的牌会消耗此状态；若为黑卡则造成 2 点伤害。不能与超频叠加。",
   [Skill.FREEZE]: "让另一方跳过下一个回合。",
-  [Skill.OMEN]: "随机预知未来某一张牌的信息，不包括当前这一张。",
+  [Skill.OMEN]: "随机预知尚未预知的未来某一张牌的信息，不包括当前这一张。",
   [Skill.CONVERT]: "反转当前这一张牌的颜色，但不公开转换前后的结果。",
   [Skill.TAKE]: "夺取另一方一个技能，并立即使用它。不能连续夺取“夺取”。",
   [Skill.OVERCLOCK]: "立刻扣 1 点血量，进入超频状态：下一次出牌若为黑卡，则造成 3 点伤害；若为白卡，超频状态也会消耗。不能与增幅叠加。",
@@ -299,6 +299,16 @@ class CardGame {
       .map(([index, card]) => [Number(index), card])
       .filter(([index]) => index > 0 && index < this.deck.length)
       .sort((a, b) => a[0] - b[0]);
+  }
+
+  getUnknownFutureIndexes(sideKey) {
+    const indexes = [];
+    for (let index = 1; index < this.deck.length; index += 1) {
+      if (this.getKnownCard(sideKey, index) === null) {
+        indexes.push(index);
+      }
+    }
+    return indexes;
   }
 
   setKnownCard(sideKey, index, card) {
@@ -652,7 +662,7 @@ class CardGame {
         candidates.push(skill);
       } else if (skill === Skill.FREEZE && !this.player.skipTurn && this.dangerFromPlayerNextTurn() >= 28) {
         candidates.push(skill);
-      } else if (skill === Skill.OMEN && this.deck.length > 1 && Math.random() < 0.25) {
+      } else if (skill === Skill.OMEN && this.getUnknownFutureIndexes("computer").length > 0 && Math.random() < 0.25) {
         candidates.push(skill);
       } else if (skill === Skill.TAKE && this.computerChooseTakeTarget() !== null && Math.random() < 0.35) {
         candidates.push(skill);
@@ -1218,7 +1228,7 @@ class CardGame {
       return !this.computer.skipTurn;
     }
     if (skill === Skill.OMEN) {
-      return this.deck.length > 1;
+      return this.getUnknownFutureIndexes("player").length > 0;
     }
     if (skill === Skill.DETECT) {
       return this.getKnownCard("player", 0) === null;
@@ -1599,10 +1609,11 @@ class CardGame {
       if (this.deck.length <= 1) {
         return -999;
       }
-      if (this.getFutureHints("computer").length) {
+      const unknownFutureCount = this.getUnknownFutureIndexes("computer").length;
+      if (!unknownFutureCount) {
         return -999;
       }
-      let score = 5 + Math.min(this.deck.length, 6);
+      let score = 5 + Math.min(unknownFutureCount + 1, 6);
       if (known !== null) {
         score += 2;
       }
@@ -1792,7 +1803,7 @@ class CardGame {
       return 16 + (1 - Math.abs(this.blackProbability() - 0.5) * 2) * 12;
     }
     if (skill === Skill.OMEN) {
-      if (this.deck.length <= 1 || this.getFutureHints("computer").length) {
+      if (!this.getUnknownFutureIndexes("computer").length) {
         return -999;
       }
       return 10;
@@ -1920,8 +1931,8 @@ class CardGame {
       this.log(`${opponent.name} 已经会跳过下一个回合，冻结没有被使用。`);
       return false;
     }
-    if (skill === Skill.OMEN && this.deck.length <= 1) {
-      this.log("预示没有传来有用信息：已经没有未来牌了。");
+    if (skill === Skill.OMEN && !this.getUnknownFutureIndexes(actor.key).length) {
+      this.log("预示没有传来有用信息：未来牌都已经被预示过了。");
       return false;
     }
     if (skill === Skill.DETECT && this.getKnownCard(actor.key, 0) !== null) {
@@ -2016,7 +2027,8 @@ class CardGame {
   }
 
   skillOmen(actor) {
-    const index = randint(1, this.deck.length - 1);
+    const unknownFutureIndexes = this.getUnknownFutureIndexes(actor.key);
+    const index = unknownFutureIndexes[randint(0, unknownFutureIndexes.length - 1)];
     const card = this.deck[index];
     this.setKnownCard(actor.key, index, card);
     if (actor.key === "player") {

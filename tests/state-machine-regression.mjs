@@ -173,6 +173,33 @@ withRandom(0.75, () => {
 });
 
 {
+  const game = freshGame({
+    deck: [Card.BLACK, Card.WHITE, Card.BLACK],
+    playerSkills: [Skill.OMEN, Skill.OMEN, Skill.OMEN],
+  });
+  withRandom(0.75, () => {
+    assert.equal(game.playerUseSkillByIndex(0), true);
+  });
+  assert.equal(game.getKnownCard("player", 2), Card.BLACK);
+  withRandom(0.75, () => {
+    assert.equal(game.playerUseSkillByIndex(0), true);
+  });
+  assert.equal(game.getKnownCard("player", 1), Card.WHITE);
+  assert.deepEqual(game.getFutureHints("player").map(([index]) => index), [1, 2]);
+  assert.equal(game.playerUseSkillByIndex(0), false);
+  assert.deepEqual(game.player.skills, [Skill.OMEN]);
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE, Card.BLACK, Card.WHITE], computerSkills: [Skill.OMEN] });
+  game.setKnownCard("computer", 2, Card.BLACK);
+  assert(game.scoreSkillForComputer(Skill.OMEN) > -999);
+  game.setKnownCard("computer", 1, Card.WHITE);
+  game.setKnownCard("computer", 3, Card.WHITE);
+  assert.equal(game.scoreSkillForComputer(Skill.OMEN), -999);
+}
+
+{
   const game = freshGame({ deck: [Card.BLACK], playerSkills: [Skill.CONVERT] });
   assert.equal(game.playerUseSkillByIndex(0), true);
   assert.deepEqual(game.deck, [Card.WHITE]);
