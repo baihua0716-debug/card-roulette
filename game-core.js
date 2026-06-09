@@ -8,6 +8,18 @@ const CARD_CN = Object.freeze({
   [Card.WHITE]: "白卡",
 });
 
+const ComputerDifficulty = Object.freeze({
+  EASY: "easy",
+  MEDIUM: "medium",
+  HARD: "hard",
+});
+
+const DIFFICULTY_NAMES = Object.freeze({
+  [ComputerDifficulty.EASY]: "简单",
+  [ComputerDifficulty.MEDIUM]: "中等",
+  [ComputerDifficulty.HARD]: "困难",
+});
+
 const Skill = Object.freeze({
   DETECT: "detect",
   SHUFFLE: "shuffle",
@@ -188,10 +200,15 @@ class CardGame {
     this.gameOver = false;
     this.winner = null;
     this.logs = [];
+    this.computerDifficulty = ComputerDifficulty.MEDIUM;
+    this.silent = false;
     this.newRoundDeck();
   }
 
   log(message) {
+    if (this.silent) {
+      return;
+    }
     this.logs.push(message);
     if (this.logs.length > 160) {
       this.logs = this.logs.slice(-160);
@@ -322,6 +339,26 @@ class CardGame {
     return this.deck.filter((card) => card === Card.BLACK).length / this.deck.length;
   }
 
+  onlyWhiteCardsLeft() {
+    return this.deck.length > 0 && this.deck.every((card) => card === Card.WHITE);
+  }
+
+  endRoundBecauseOnlyWhite(actor) {
+    if (this.gameOver || !this.onlyWhiteCardsLeft()) {
+      return false;
+    }
+    this.log(`${actor.name} 确认剩余牌均为白卡，直接结束本轮。`);
+    this.newRoundDeck();
+    return true;
+  }
+
+  playerEndRoundIfOnlyWhite() {
+    if (this.turn !== "player" || this.player.skipTurn || this.gameOver) {
+      return false;
+    }
+    return this.endRoundBecauseOnlyWhite(this.player);
+  }
+
   playerPlayToComputer() {
     if (this.turn !== "player" || this.gameOver) {
       return;
@@ -426,12 +463,23 @@ class CardGame {
       return;
     }
 
+    if (this.onlyWhiteCardsLeft()) {
+      this.endRoundBecauseOnlyWhite(this.computer);
+      return;
+    }
+
     let skillUses = 0;
-    while (skillUses < 7) {
+    const maxSkillUses = this.computerDifficulty === ComputerDifficulty.EASY ? 1 : 7;
+    while (skillUses < maxSkillUses) {
       if (this.checkWinner()) {
         return;
       }
       this.ensureDeck();
+
+      if (this.onlyWhiteCardsLeft()) {
+        this.endRoundBecauseOnlyWhite(this.computer);
+        return;
+      }
 
       const used = this.computerTryUseSkill();
       if (this.redealtThisTurn && this.turn === "player") {
@@ -450,6 +498,11 @@ class CardGame {
 
     if (this.redealtThisTurn && this.turn === "player") {
       this.redealtThisTurn = false;
+      return;
+    }
+
+    if (this.onlyWhiteCardsLeft()) {
+      this.endRoundBecauseOnlyWhite(this.computer);
       return;
     }
 
@@ -474,6 +527,16 @@ class CardGame {
   }
 
   computerTryUseSkill() {
+    if (this.computerDifficulty === ComputerDifficulty.EASY) {
+      return this.computerTryUseSkillEasy();
+    }
+    if (this.computerDifficulty === ComputerDifficulty.HARD) {
+      return this.computerTryUseSkillHard();
+    }
+    return this.computerTryUseSkillMedium();
+  }
+
+  computerTryUseSkillMedium() {
     this.ensureDeck();
     const known = this.getKnownCard("computer", 0);
 
@@ -551,6 +614,504 @@ class CardGame {
       removeFirst(this.computer.skills, Skill.TAKE);
     }
     return success;
+  }
+
+  computerTryUseSkillEasy() {
+    this.ensureDeck();
+    if (!this.computer.skills.length || Math.random() < 0.45) {
+      return false;
+    }
+
+    const known = this.getKnownCard("computer", 0);
+    const blackProb = this.currentBlackProbabilityForComputer();
+    const candidates = [];
+
+    for (const skill of unique(this.computer.skills)) {
+      if (skill === Skill.HEAL && this.computer.hp <= this.computer.maxHp - 2) {
+        candidates.push(skill);
+      } else if (skill === Skill.RISK && this.computer.hp >= 2 && this.computer.hp <= this.computer.maxHp - 2) {
+        candidates.push(skill);
+      } else if (skill === Skill.DETECT && known === null && Math.random() < 0.65) {
+        candidates.push(skill);
+      } else if (skill === Skill.SHUFFLE && known === null && this.computer.hp <= 3 && blackProb >= 0.45) {
+        candidates.push(skill);
+      } else if (skill === Skill.AMPLIFY && !this.computer.amplifyActive && !this.computer.overclockActive && blackProb >= 0.55) {
+        candidates.push(skill);
+      } else if (skill === Skill.OVERCLOCK && !this.computer.overclockActive && !this.computer.amplifyActive && this.computer.hp > 2 && blackProb >= 0.7) {
+        candidates.push(skill);
+      } else if (skill === Skill.CONVERT && known === Card.WHITE && this.player.hp <= 3) {
+        candidates.push(skill);
+      } else if (skill === Skill.FREEZE && !this.player.skipTurn && this.dangerFromPlayerNextTurn() >= 28) {
+        candidates.push(skill);
+      } else if (skill === Skill.OMEN && this.deck.length > 1 && Math.random() < 0.25) {
+        candidates.push(skill);
+      } else if (skill === Skill.TAKE && this.computerChooseTakeTarget() !== null && Math.random() < 0.35) {
+        candidates.push(skill);
+      }
+    }
+
+    if (!candidates.length) {
+      return false;
+    }
+
+    const skill = choice(candidates);
+    if (skill === Skill.TAKE) {
+      const target = this.computerChooseTakeTarget();
+      return target === null ? false : this.aiUseTake(target);
+    }
+    return this.aiUseSkill(skill);
+  }
+
+  computerChooseActionEasy() {
+    const known = this.getKnownCard("computer", 0);
+    if (known === Card.BLACK) {
+      return "opponent";
+    }
+    if (known === Card.WHITE) {
+      return "self";
+    }
+    if (Math.random() < 0.35) {
+      return choice(["opponent", "self"]);
+    }
+    return this.blackProbability() >= 0.5 ? "opponent" : "self";
+  }
+
+  computerTryUseSkillHard() {
+    const skillActions = this.getComputerSkillActions();
+    if (!skillActions.length) {
+      return false;
+    }
+
+    const bestPlayScore = Math.max(
+      this.scoreHardComputerAction({ type: "play", target: "opponent" }),
+      this.scoreHardComputerAction({ type: "play", target: "self" }),
+    );
+
+    const scoredSkills = skillActions
+      .map((action) => [this.scoreHardComputerAction(action), action])
+      .sort((a, b) => {
+        const scoreDiff = b[0] - a[0];
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+        return skillPriority(a[1].skill) - skillPriority(b[1].skill);
+      });
+
+    const [bestScore, bestAction] = scoredSkills[0];
+    if (bestScore < bestPlayScore + 4 || bestScore < 10) {
+      return false;
+    }
+    return this.executeComputerAction(bestAction);
+  }
+
+  computerChooseActionHard() {
+    const actions = [
+      { type: "play", target: "opponent" },
+      { type: "play", target: "self" },
+    ];
+    const scored = actions
+      .map((action) => [this.scoreHardComputerAction(action), action])
+      .sort((a, b) => b[0] - a[0]);
+    return scored[0][1].target;
+  }
+
+  getComputerSkillActions() {
+    const actions = [];
+    for (const skill of unique(this.computer.skills)) {
+      if (skill === Skill.TAKE) {
+        const takeTarget = this.computerChooseTakeTarget();
+        if (takeTarget !== null) {
+          actions.push({ type: "skill", skill, takeTarget });
+        }
+      } else if (this.scoreSkillForComputer(skill) > -999) {
+        actions.push({ type: "skill", skill, takeTarget: null });
+      }
+    }
+    return actions;
+  }
+
+  executeComputerAction(action) {
+    if (action.type === "play") {
+      return this.applyPlayDecision("computer", action.target);
+    }
+    if (action.skill === Skill.TAKE) {
+      return action.takeTarget === null ? false : this.aiUseTake(action.takeTarget);
+    }
+    return this.aiUseSkill(action.skill);
+  }
+
+  applyPlayDecision(actorKey, targetChoice) {
+    const actor = actorKey === "computer" ? this.computer : this.player;
+    const opponent = actorKey === "computer" ? this.player : this.computer;
+    const target = targetChoice === "self" ? actor : opponent;
+    const result = this.playCard(actor, target);
+
+    if (!this.gameOver) {
+      if (actorKey === "player") {
+        if (targetChoice === "self" && result === Card.WHITE) {
+          this.turn = "player";
+          this.log("你对己方打出白卡，因此可以继续行动。");
+        } else {
+          this.turn = "computer";
+          if (targetChoice === "self") {
+            this.log("你对己方打出黑卡，回合交给电脑。");
+          }
+        }
+      } else if (targetChoice === "self" && result === Card.WHITE) {
+        this.turn = "computer";
+        this.log("电脑对己方打出白卡，因此它继续行动。");
+      } else {
+        this.turn = "player";
+      }
+    }
+    this.afterCardOrSkill();
+    return true;
+  }
+
+  scoreHardComputerAction(action) {
+    const mediumScore = this.scoreComputerActionMedium(action);
+    const searchScore = this.scoreTwoLayerSearch(action);
+    const monteCarloScore = this.scoreMonteCarlo(action, 200);
+    const retentionPenalty = action.type === "skill" ? this.skillRetentionValue(this.computer, action.skill) * 0.65 : 0;
+    return mediumScore * 0.45 + searchScore * 0.55 + monteCarloScore * 0.35 - retentionPenalty;
+  }
+
+  scoreComputerActionMedium(action) {
+    if (action.type === "play") {
+      return this.scorePlayActionForComputer(action.target);
+    }
+    if (action.skill === Skill.TAKE) {
+      return this.scoreTakeSkill(action.takeTarget);
+    }
+    return this.scoreSkillForComputer(action.skill);
+  }
+
+  scoreTwoLayerSearch(action) {
+    const clone = this.cloneForSimulation();
+    if (!clone.applyComputerActionForSimulation(action)) {
+      return -999;
+    }
+    if (clone.gameOver) {
+      return clone.evaluatePositionForComputer();
+    }
+    if (clone.turn !== "player") {
+      return clone.evaluatePositionForComputer() - clone.playerThreatEvaluation() * 0.55;
+    }
+
+    const responses = clone.getPlayerResponseActions();
+    if (!responses.length) {
+      return clone.evaluatePositionForComputer() - clone.playerThreatEvaluation() * 0.55;
+    }
+
+    let worstValue = Infinity;
+    for (const response of responses) {
+      const responseClone = clone.cloneForSimulation();
+      responseClone.applyPlayerActionForSimulation(response);
+      worstValue = Math.min(worstValue, responseClone.evaluatePositionForComputer());
+    }
+    return worstValue;
+  }
+
+  scoreMonteCarlo(action, steps = 200) {
+    let total = 0;
+    for (let i = 0; i < steps; i += 1) {
+      const clone = this.cloneForSimulation();
+      if (!clone.applyComputerActionForSimulation(action)) {
+        total -= 120;
+        continue;
+      }
+      clone.runMonteCarloRollout(8);
+      total += clone.evaluatePositionForComputer();
+    }
+    return total / steps;
+  }
+
+  cloneForSimulation() {
+    const clone = Object.create(CardGame.prototype);
+    clone.player = this.clonePlayer(this.player);
+    clone.computer = this.clonePlayer(this.computer);
+    clone.deck = [...this.deck];
+    clone.turn = this.turn;
+    clone.knownPositions = {
+      player: { ...this.knownPositions.player },
+      computer: { ...this.knownPositions.computer },
+    };
+    clone.maxSkills = this.maxSkills;
+    clone.skillsPerRound = this.skillsPerRound;
+    clone.redealtThisTurn = this.redealtThisTurn;
+    clone.gameOver = this.gameOver;
+    clone.winner = this.winner;
+    clone.logs = [];
+    clone.computerDifficulty = this.computerDifficulty;
+    clone.silent = true;
+    return clone;
+  }
+
+  clonePlayer(player) {
+    const clone = Object.create(Player.prototype);
+    clone.name = player.name;
+    clone.key = player.key;
+    clone.hp = player.hp;
+    clone.maxHp = player.maxHp;
+    clone.skills = [...player.skills];
+    clone.amplifyActive = player.amplifyActive;
+    clone.overclockActive = player.overclockActive;
+    clone.skipTurn = player.skipTurn;
+    return clone;
+  }
+
+  applyComputerActionForSimulation(action) {
+    if (action.type === "play") {
+      return this.applyPlayDecision("computer", action.target);
+    }
+    if (!this.computer.skills.includes(action.skill)) {
+      return false;
+    }
+    let success;
+    if (action.skill === Skill.TAKE) {
+      if (action.takeTarget === null || !this.player.skills.includes(action.takeTarget)) {
+        return false;
+      }
+      success = this.useTakeDirect(this.computer, this.player, action.takeTarget);
+    } else {
+      success = this.useSkill(this.computer, this.player, action.skill);
+    }
+    if (success) {
+      removeFirst(this.computer.skills, action.skill);
+      this.afterCardOrSkill();
+    }
+    return success;
+  }
+
+  applyPlayerActionForSimulation(action) {
+    if (action.type === "play") {
+      return this.applyPlayDecision("player", action.target);
+    }
+    if (!this.player.skills.includes(action.skill)) {
+      return false;
+    }
+    let success;
+    if (action.skill === Skill.TAKE) {
+      if (action.takeTarget === null || !this.computer.skills.includes(action.takeTarget)) {
+        return false;
+      }
+      success = this.useTakeDirect(this.player, this.computer, action.takeTarget);
+    } else {
+      success = this.useSkill(this.player, this.computer, action.skill);
+    }
+    if (success) {
+      removeFirst(this.player.skills, action.skill);
+      this.afterCardOrSkill();
+    }
+    return success;
+  }
+
+  getPlayerResponseActions() {
+    if (this.turn !== "player" || this.player.skipTurn || this.gameOver) {
+      return [];
+    }
+
+    const actions = [
+      { type: "play", target: "opponent" },
+      { type: "play", target: "self" },
+    ];
+
+    const scoredSkills = [];
+    for (const skill of unique(this.player.skills)) {
+      if (skill === Skill.TAKE) {
+        const takeTarget = this.chooseMostValuableSkill(this.computer);
+        if (takeTarget !== null) {
+          scoredSkills.push([this.skillThreatValueForPlayer(skill), { type: "skill", skill, takeTarget }]);
+        }
+      } else if (this.playerSkillLooksUsable(skill)) {
+        scoredSkills.push([this.skillThreatValueForPlayer(skill), { type: "skill", skill, takeTarget: null }]);
+      }
+    }
+
+    scoredSkills.sort((a, b) => b[0] - a[0]);
+    actions.push(...scoredSkills.slice(0, 3).map(([, action]) => action));
+    return actions;
+  }
+
+  playerSkillLooksUsable(skill) {
+    if (skill === Skill.HEAL) {
+      return this.player.hp < this.player.maxHp;
+    }
+    if (skill === Skill.RISK) {
+      return this.player.hp >= 2 && this.player.hp <= this.player.maxHp - 2;
+    }
+    if (skill === Skill.AMPLIFY) {
+      return !this.player.amplifyActive && !this.player.overclockActive;
+    }
+    if (skill === Skill.OVERCLOCK) {
+      return !this.player.overclockActive && !this.player.amplifyActive && this.player.hp > 1;
+    }
+    if (skill === Skill.FREEZE) {
+      return !this.computer.skipTurn;
+    }
+    if (skill === Skill.OMEN) {
+      return this.deck.length > 1;
+    }
+    if (skill === Skill.DETECT) {
+      return this.getKnownCard("player", 0) === null;
+    }
+    return skill === Skill.SHUFFLE || skill === Skill.CONVERT;
+  }
+
+  chooseMostValuableSkill(player) {
+    if (!player.skills.length) {
+      return null;
+    }
+    return [...player.skills].sort((a, b) => this.skillRetentionValue(player, b) - this.skillRetentionValue(player, a))[0];
+  }
+
+  skillThreatValueForPlayer(skill) {
+    const blackProb = this.getKnownCard("player", 0) === Card.BLACK ? 1 : this.blackProbability();
+    if (skill === Skill.OVERCLOCK && this.player.hp > 1) {
+      return 24 * blackProb;
+    }
+    if (skill === Skill.AMPLIFY) {
+      return 16 * blackProb;
+    }
+    if (skill === Skill.CONVERT) {
+      return 14;
+    }
+    if (skill === Skill.FREEZE) {
+      return 12;
+    }
+    if (skill === Skill.TAKE) {
+      return 10;
+    }
+    if (skill === Skill.HEAL || skill === Skill.RISK) {
+      return this.player.maxHp - this.player.hp + 6;
+    }
+    if (skill === Skill.DETECT) {
+      return 8;
+    }
+    return 5;
+  }
+
+  skillRetentionValue(player, skill) {
+    const isComputer = player.key === "computer";
+    const own = player;
+    const opponent = isComputer ? this.player : this.computer;
+    const known = this.getKnownCard(player.key, 0);
+    const blackProb = known === Card.BLACK ? 1 : known === Card.WHITE ? 0 : this.blackProbability();
+    const missingHp = own.maxHp - own.hp;
+
+    if (skill === Skill.HEAL) {
+      return missingHp > 0 ? 8 + missingHp * 4 : 1;
+    }
+    if (skill === Skill.RISK) {
+      return missingHp >= 2 && own.hp > 1 ? 8 + missingHp * 2 : 1;
+    }
+    if (skill === Skill.AMPLIFY) {
+      return own.amplifyActive || own.overclockActive ? 1 : 8 + blackProb * 12;
+    }
+    if (skill === Skill.OVERCLOCK) {
+      return own.overclockActive || own.amplifyActive || own.hp <= 1 ? 1 : 6 + blackProb * 16 + (opponent.hp <= 3 ? 8 : 0);
+    }
+    if (skill === Skill.CONVERT) {
+      return known === Card.WHITE ? 16 : known === null ? 7 : 2;
+    }
+    if (skill === Skill.FREEZE) {
+      return opponent.skipTurn ? 1 : 12;
+    }
+    if (skill === Skill.TAKE) {
+      return opponent.skills.length ? 10 + Math.min(opponent.skills.length, 4) * 2 : 1;
+    }
+    if (skill === Skill.DETECT) {
+      return known === null ? 7 : 1;
+    }
+    if (skill === Skill.OMEN) {
+      return this.deck.length > 1 ? 5 : 1;
+    }
+    if (skill === Skill.SHUFFLE) {
+      return known === null ? 6 : 1;
+    }
+    return 1;
+  }
+
+  playerThreatEvaluation() {
+    const known = this.getKnownCard("player", 0);
+    const blackProb = known === Card.BLACK ? 1 : known === Card.WHITE ? 0 : this.blackProbability();
+    let damage = this.predictedBlackDamage(this.player);
+    if (this.player.skills.includes(Skill.OVERCLOCK) && this.player.hp > 1) {
+      damage = Math.max(damage, 3);
+    }
+    if (this.player.skills.includes(Skill.AMPLIFY)) {
+      damage = Math.max(damage, 2);
+    }
+    const lethal = damage >= this.computer.hp ? 40 : 0;
+    const skillThreat = this.player.skills.reduce((sum, skill) => sum + this.skillThreatValueForPlayer(skill), 0);
+    return blackProb * damage * 20 + lethal + skillThreat * 0.6;
+  }
+
+  evaluatePositionForComputer() {
+    if (this.gameOver) {
+      if (this.winner === "电脑") {
+        return 10000;
+      }
+      if (this.winner === "玩家") {
+        return -10000;
+      }
+    }
+
+    const hpValue = (this.computer.hp - this.player.hp) * 28;
+    const skillValue =
+      this.computer.skills.reduce((sum, skill) => sum + this.skillRetentionValue(this.computer, skill), 0) -
+      this.player.skills.reduce((sum, skill) => sum + this.skillRetentionValue(this.player, skill), 0);
+    const effectValue =
+      (this.computer.amplifyActive ? 12 : 0) +
+      (this.computer.overclockActive ? 18 : 0) -
+      (this.player.amplifyActive ? 12 : 0) -
+      (this.player.overclockActive ? 18 : 0) +
+      (this.player.skipTurn ? 14 : 0) -
+      (this.computer.skipTurn ? 14 : 0);
+    const deckValue = (this.currentBlackProbabilityForComputer() - 0.5) * this.predictedBlackDamage(this.computer) * 12;
+    return hpValue + skillValue + effectValue + deckValue - this.playerThreatEvaluation() * 0.8;
+  }
+
+  runMonteCarloRollout(maxHalfTurns = 8) {
+    for (let i = 0; i < maxHalfTurns && !this.gameOver; i += 1) {
+      this.ensureDeck();
+      if (this.onlyWhiteCardsLeft()) {
+        const actor = this.turn === "computer" ? this.computer : this.player;
+        this.endRoundBecauseOnlyWhite(actor);
+        continue;
+      }
+
+      if (this.turn === "player") {
+        if (this.player.skipTurn) {
+          this.player.skipTurn = false;
+          this.turn = "computer";
+          continue;
+        }
+        this.applyPlayDecision("player", this.chooseMonteCarloTarget("player"));
+      } else {
+        if (this.computer.skipTurn) {
+          this.computer.skipTurn = false;
+          this.turn = "player";
+          continue;
+        }
+        this.applyPlayDecision("computer", this.chooseMonteCarloTarget("computer"));
+      }
+    }
+  }
+
+  chooseMonteCarloTarget(actorKey) {
+    const known = this.getKnownCard(actorKey, 0);
+    if (known === Card.BLACK) {
+      return "opponent";
+    }
+    if (known === Card.WHITE) {
+      return "self";
+    }
+    const blackProb = this.blackProbability();
+    if (Math.random() < 0.2) {
+      return choice(["opponent", "self"]);
+    }
+    return blackProb >= 0.48 ? "opponent" : "self";
   }
 
   currentBlackProbabilityForComputer() {
@@ -1001,6 +1562,16 @@ class CardGame {
   }
 
   computerChooseAction() {
+    if (this.computerDifficulty === ComputerDifficulty.EASY) {
+      return this.computerChooseActionEasy();
+    }
+    if (this.computerDifficulty === ComputerDifficulty.HARD) {
+      return this.computerChooseActionHard();
+    }
+    return this.computerChooseActionMedium();
+  }
+
+  computerChooseActionMedium() {
     const playerScore = this.scorePlayActionForComputer("opponent");
     const selfScore = this.scorePlayActionForComputer("self");
     if (Math.abs(playerScore - selfScore) <= 3) {
@@ -1247,6 +1818,8 @@ class CardGame {
 export {
   Card,
   CARD_CN,
+  ComputerDifficulty,
+  DIFFICULTY_NAMES,
   Skill,
   SKILL_NAMES,
   SKILL_DESCRIPTIONS,

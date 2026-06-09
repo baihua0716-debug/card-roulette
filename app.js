@@ -1,6 +1,8 @@
 import {
   Card,
   CARD_CN,
+  ComputerDifficulty,
+  DIFFICULTY_NAMES,
   Skill,
   SKILL_DESCRIPTIONS,
   CardGame,
@@ -24,6 +26,7 @@ const elements = {
   knownCardFace: $("#knownCardFace"),
   actionState: $("#actionState"),
   actionButtons: $("#actionButtons"),
+  difficultySelect: $("#difficultySelect"),
   skillCount: $("#skillCount"),
   computerSkillCount: $("#computerSkillCount"),
   playerSkills: $("#playerSkills"),
@@ -176,6 +179,15 @@ function renderActions() {
       render();
     }),
   );
+
+  if (game.onlyWhiteCardsLeft()) {
+    elements.actionButtons.append(
+      makeButton("↺", "结束本轮", "剩余牌均为白卡，直接进入下一轮", () => {
+        game.playerEndRoundIfOnlyWhite();
+        render();
+      }, "ghost"),
+    );
+  }
 }
 
 function makeButton(icon, label, title, handler, className = "") {
@@ -249,6 +261,13 @@ function renderComputerSkills() {
     .join("");
 }
 
+function renderDifficultySelect() {
+  elements.difficultySelect.innerHTML = Object.values(ComputerDifficulty)
+    .map((difficulty) => `<option value="${difficulty}">${escapeHtml(DIFFICULTY_NAMES[difficulty])}</option>`)
+    .join("");
+  elements.difficultySelect.value = state.game.computerDifficulty;
+}
+
 function renderLogs() {
   const logs = state.game.logs.slice(-80).reverse();
   if (!logs.length) {
@@ -284,6 +303,7 @@ function render() {
 
   renderDeck();
   renderActions();
+  renderDifficultySelect();
   renderPlayerSkills();
   renderComputerSkills();
   renderLogs();
@@ -291,7 +311,9 @@ function render() {
 
 function bindEvents() {
   $("#resetButton").addEventListener("click", () => {
+    const difficulty = state.game.computerDifficulty;
     state.game = new CardGame();
+    state.game.computerDifficulty = difficulty;
     state.selectedSkillIndex = 0;
     render();
   });
@@ -313,6 +335,12 @@ function bindEvents() {
     const takeTargetIndex = selectedSkill === Skill.TAKE ? Number(elements.takeTargetSelect.value) : null;
     state.game.playerUseSkillByIndex(state.selectedSkillIndex, Number.isNaN(takeTargetIndex) ? null : takeTargetIndex);
     state.game.resolveComputerUntilPlayer();
+    render();
+  });
+
+  elements.difficultySelect.addEventListener("change", () => {
+    state.game.computerDifficulty = elements.difficultySelect.value;
+    state.game.log(`电脑难度切换为：${DIFFICULTY_NAMES[state.game.computerDifficulty]}`);
     render();
   });
 

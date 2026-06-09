@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { Card, CardGame, Skill, SKILL_WEIGHTS, displaySkill } from "../game-core.js";
+import { Card, CardGame, ComputerDifficulty, DIFFICULTY_NAMES, Skill, SKILL_WEIGHTS, displaySkill } from "../game-core.js";
 
 function freshGame({
   deck = [Card.BLACK, Card.WHITE],
@@ -42,6 +42,9 @@ function withRandom(value, callback) {
 
 assert.equal(Skill.DETECT, "detect");
 assert.equal(displaySkill(Skill.DETECT), "探测");
+assert.equal(DIFFICULTY_NAMES[ComputerDifficulty.EASY], "简单");
+assert.equal(DIFFICULTY_NAMES[ComputerDifficulty.MEDIUM], "中等");
+assert.equal(DIFFICULTY_NAMES[ComputerDifficulty.HARD], "困难");
 assert.equal(Skill.RISK, "risk");
 assert.equal(displaySkill(Skill.RISK), "涉险");
 assert.equal(SKILL_WEIGHTS[Skill.HEAL], 2);
@@ -62,6 +65,7 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   assert.equal(game.computer.hp, 6);
   assert.equal(game.computer.maxHp, 6);
   assert.equal(game.deck.length, 8);
+  assert.equal(game.computerDifficulty, ComputerDifficulty.MEDIUM);
 }
 
 {
@@ -89,6 +93,27 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   assert.equal(game.player.hp, 6);
   assert.equal(game.turn, "player");
   assert.deepEqual(game.deck, [Card.BLACK]);
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.WHITE] });
+  assert.equal(game.playerEndRoundIfOnlyWhite(), true);
+  assert.equal(game.deck.length, 8);
+  assert.equal(game.turn, "player");
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.BLACK] });
+  assert.equal(game.playerEndRoundIfOnlyWhite(), false);
+  assert.deepEqual(game.deck, [Card.WHITE, Card.BLACK]);
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.WHITE] });
+  game.turn = "computer";
+  game.computerTurnOnce();
+  assert.equal(game.deck.length, 8);
+  assert.equal(game.turn, "player");
 }
 
 {
@@ -222,6 +247,22 @@ withRandom(0.75, () => {
   game.useSkill = () => true;
   assert.equal(game.computerTryUseSkill(), true);
   assert.deepEqual(game.computer.skills, [Skill.SHUFFLE, Skill.HEAL]);
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE] });
+  game.setKnownCard("computer", 0, Card.BLACK);
+  game.computerDifficulty = ComputerDifficulty.EASY;
+  assert.equal(game.computerChooseAction(), "opponent");
+  game.clearAllKnowledge();
+  game.setKnownCard("computer", 0, Card.WHITE);
+  assert.equal(game.computerChooseAction(), "self");
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE], computerSkills: [] });
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  assert.doesNotThrow(() => game.computerChooseAction());
 }
 
 {

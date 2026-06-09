@@ -51,6 +51,10 @@
               <span id="actionState"></span>
             </div>
             <div class="button-grid" id="actionButtons"></div>
+            <label class="take-target">
+              <span>电脑难度</span>
+              <select id="difficultySelect"></select>
+            </label>
           </section>
 
           <section class="skill-section">
@@ -103,6 +107,7 @@
           <li>黑卡造成 1 点基础伤害，白卡不造成伤害。</li>
           <li>对电脑出牌后交给电脑；对己方出牌若是白卡可继续行动，若是黑卡则结束回合。</li>
           <li>双方初始血量为 6。任意一方血量归零，对局结束。</li>
+          <li>如果当前牌堆只剩白卡，可以直接结束本轮并生成新牌序。</li>
           <li>每次重新生成牌序时，双方各获得随机技能，最多持有 8 个；技能不是等概率出现。</li>
         </ol>
         <h3>技能效果</h3>
