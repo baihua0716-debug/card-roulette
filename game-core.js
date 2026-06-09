@@ -36,10 +36,10 @@ const SKILL_DESCRIPTIONS = Object.freeze({
   [Skill.DETECT]: "查看当前这一张牌是黑卡还是白卡。",
   [Skill.SHUFFLE]: "洗掉当前这一张牌，并公开它是黑卡还是白卡。",
   [Skill.HEAL]: "回复 1 点血量，不能超过血量上限。",
-  [Skill.AMPLIFY]: "进入增幅状态：下一张由使用者打出的黑卡造成 2 点伤害；若打出白卡，状态保留。",
+  [Skill.AMPLIFY]: "进入增幅状态：下一张由使用者打出的牌会消耗此状态；若为黑卡则造成 2 点伤害。",
   [Skill.FREEZE]: "让另一方跳过下一个回合。",
   [Skill.OMEN]: "随机预知未来某一张牌的信息，不包括当前这一张。",
-  [Skill.CONVERT]: "把当前这一张黑卡变白卡，或把白卡变黑卡。",
+  [Skill.CONVERT]: "反转当前这一张牌的颜色，但不公开转换前后的结果。",
   [Skill.TAKE]: "夺取另一方一个技能，并立即使用它。不能连续夺取“夺取”。",
   [Skill.OVERCLOCK]: "立刻扣 1 点血量，进入超频状态：下一次出牌若为黑卡，则造成 3 点伤害；若为白卡，超频状态也会消耗。",
 });
@@ -118,8 +118,8 @@ class Player {
   constructor(name, key) {
     this.name = name;
     this.key = key;
-    this.hp = 4;
-    this.maxHp = 4;
+    this.hp = 6;
+    this.maxHp = 6;
     this.skills = [];
     this.amplifyActive = false;
     this.overclockActive = false;
@@ -168,7 +168,7 @@ class CardGame {
   }
 
   newRoundDeck() {
-    const total = randint(3, 8);
+    const total = 8;
     const blackCount = randint(1, total - 1);
     const whiteCount = total - blackCount;
 
@@ -1042,7 +1042,7 @@ class CardGame {
 
   skillAmplify(actor) {
     actor.amplifyActive = true;
-    this.log(`${actor.name} 进入增幅状态：下一张由其打出的黑卡造成 2 点伤害。`);
+    this.log(`${actor.name} 进入增幅状态：下一张由其打出的牌会消耗此状态；若为黑卡则造成 2 点伤害。`);
   }
 
   skillFreeze(actor, opponent) {
@@ -1067,7 +1067,7 @@ class CardGame {
     this.deck[0] = newCard;
     this.flipCurrentKnowledge();
     if (actor.key === "player") {
-      this.log(`当前这一张被转换：${CARD_CN[oldCard]} → ${CARD_CN[newCard]}。`);
+      this.log("当前这一张牌已被转换。");
     } else {
       this.log("电脑转换了当前这一张牌。");
     }
@@ -1113,7 +1113,7 @@ class CardGame {
       this.checkWinner();
     } else {
       this.log("打出白卡，没有造成伤害。");
-      this.clearOverclockAfterAnyPlay(actor);
+      this.clearTemporaryEffectsAfterWhite(actor);
     }
 
     return card;
@@ -1140,10 +1140,14 @@ class CardGame {
     }
   }
 
-  clearOverclockAfterAnyPlay(actor) {
+  clearTemporaryEffectsAfterWhite(actor) {
     if (actor.overclockActive) {
       actor.overclockActive = false;
       this.log(`${actor.name} 的超频状态结束。`);
+    }
+    if (actor.amplifyActive) {
+      actor.amplifyActive = false;
+      this.log(`${actor.name} 的增幅状态结束。`);
     }
   }
 

@@ -4,8 +4,8 @@ import { Card, CardGame, Skill, displaySkill } from "../game-core.js";
 
 function freshGame({
   deck = [Card.BLACK, Card.WHITE],
-  playerHp = 4,
-  computerHp = 4,
+  playerHp = 6,
+  computerHp = 6,
   playerSkills = [],
   computerSkills = [],
 } = {}) {
@@ -44,10 +44,19 @@ assert.equal(Skill.DETECT, "detect");
 assert.equal(displaySkill(Skill.DETECT), "探测");
 
 {
+  const game = new CardGame();
+  assert.equal(game.player.hp, 6);
+  assert.equal(game.player.maxHp, 6);
+  assert.equal(game.computer.hp, 6);
+  assert.equal(game.computer.maxHp, 6);
+  assert.equal(game.deck.length, 8);
+}
+
+{
   const game = freshGame({ deck: [Card.BLACK, Card.WHITE] });
   game.player.amplifyActive = true;
   game.playerPlayToComputer();
-  assert.equal(game.computer.hp, 2);
+  assert.equal(game.computer.hp, 4);
   assert.equal(game.player.amplifyActive, false);
   assert.equal(game.turn, "computer");
   assert.deepEqual(game.deck, [Card.WHITE]);
@@ -55,8 +64,17 @@ assert.equal(displaySkill(Skill.DETECT), "探测");
 
 {
   const game = freshGame({ deck: [Card.WHITE, Card.BLACK] });
+  game.player.amplifyActive = true;
+  game.playerPlayToComputer();
+  assert.equal(game.computer.hp, 6);
+  assert.equal(game.player.amplifyActive, false);
+  assert.equal(game.turn, "computer");
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.BLACK] });
   game.playerPlayToSelf();
-  assert.equal(game.player.hp, 4);
+  assert.equal(game.player.hp, 6);
   assert.equal(game.turn, "player");
   assert.deepEqual(game.deck, [Card.BLACK]);
 }
@@ -85,9 +103,9 @@ assert.equal(displaySkill(Skill.DETECT), "探测");
 }
 
 {
-  const game = freshGame({ playerHp: 3, playerSkills: [Skill.HEAL] });
+  const game = freshGame({ playerHp: 5, playerSkills: [Skill.HEAL] });
   assert.equal(game.playerUseSkillByIndex(0), true);
-  assert.equal(game.player.hp, 4);
+  assert.equal(game.player.hp, 6);
 }
 
 {
@@ -112,24 +130,25 @@ withRandom(0.75, () => {
   const game = freshGame({ deck: [Card.BLACK], playerSkills: [Skill.CONVERT] });
   assert.equal(game.playerUseSkillByIndex(0), true);
   assert.deepEqual(game.deck, [Card.WHITE]);
+  assert.equal(game.logs.some((log) => log.includes("黑卡") || log.includes("白卡")), false);
 }
 
 {
   const game = freshGame({
-    playerHp: 3,
+    playerHp: 5,
     playerSkills: [Skill.TAKE],
     computerSkills: [Skill.HEAL],
   });
   assert.equal(game.playerUseSkillByIndex(0, 0), true);
-  assert.equal(game.player.hp, 4);
+  assert.equal(game.player.hp, 6);
   assert.deepEqual(game.player.skills, []);
   assert.deepEqual(game.computer.skills, []);
 }
 
 {
-  const game = freshGame({ playerHp: 4, playerSkills: [Skill.OVERCLOCK] });
+  const game = freshGame({ playerHp: 6, playerSkills: [Skill.OVERCLOCK] });
   assert.equal(game.playerUseSkillByIndex(0), true);
-  assert.equal(game.player.hp, 3);
+  assert.equal(game.player.hp, 5);
   assert.equal(game.player.overclockActive, true);
 }
 
