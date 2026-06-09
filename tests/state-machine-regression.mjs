@@ -266,6 +266,34 @@ withRandom(0.75, () => {
 }
 
 {
+  const game = freshGame({ deck: [Card.WHITE, Card.BLACK], computerSkills: [Skill.DETECT, Skill.CONVERT] });
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  const action = { type: "skill", skill: Skill.DETECT, takeTarget: null };
+  const key = game.hardSkillComboKey([Skill.DETECT, Skill.CONVERT]);
+  assert.equal(game.scoreLearnedSkillCombos(action), 0);
+  game.rememberHardSkillCombo(action, 120, 1);
+  assert.equal(game.hardSkillComboMemory.has(key), true);
+  assert(game.scoreLearnedSkillCombos(action) > 0);
+  game.rememberHardSkillCombo(action, -120, 1);
+  assert(game.scoreLearnedSkillCombos(action) < 0);
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.BLACK], computerSkills: [Skill.DETECT, Skill.CONVERT, Skill.AMPLIFY] });
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  assert(game.scoreSkillComboPotential({ type: "skill", skill: Skill.DETECT, takeTarget: null }) > 0);
+  assert(Number.isFinite(game.scoreHardContinuation({ type: "skill", skill: Skill.DETECT, takeTarget: null })));
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE], playerSkills: [Skill.OVERCLOCK, Skill.CONVERT] });
+  const activeThreat = game.playerThreatEvaluation();
+  game.player.skipTurn = true;
+  assert.equal(game.dangerFromPlayerNextTurn(), 0);
+  assert(game.playerThreatEvaluation() < activeThreat);
+}
+
+{
   const game = freshGame({ deck: [Card.BLACK], computerSkills: [Skill.OVERCLOCK] });
   game.computer.amplifyActive = true;
   assert.equal(game.scoreSkillForComputer(Skill.OVERCLOCK), -999);

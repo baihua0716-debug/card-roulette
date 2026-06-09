@@ -312,8 +312,14 @@ function render() {
 function bindEvents() {
   $("#resetButton").addEventListener("click", () => {
     const difficulty = state.game.computerDifficulty;
+    const hardSkillComboMemory = state.game.hardSkillComboMemory;
+    const hardSkillLearningTick = state.game.hardSkillLearningTick;
     state.game = new CardGame();
     state.game.computerDifficulty = difficulty;
+    if (hardSkillComboMemory instanceof Map) {
+      state.game.hardSkillComboMemory = new Map(hardSkillComboMemory);
+      state.game.hardSkillLearningTick = hardSkillLearningTick;
+    }
     state.selectedSkillIndex = 0;
     render();
   });

@@ -98,6 +98,8 @@ const AI_SKILL_PRIORITY = Object.freeze([
   Skill.SHUFFLE,
 ]);
 
+const HARD_SKILL_COMBO_MEMORY_LIMIT = 96;
+
 function randint(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -201,6 +203,8 @@ class CardGame {
     this.winner = null;
     this.logs = [];
     this.computerDifficulty = ComputerDifficulty.MEDIUM;
+    this.hardSkillComboMemory = new Map();
+    this.hardSkillLearningTick = 0;
     this.silent = false;
     this.newRoundDeck();
   }
@@ -507,6 +511,11 @@ class CardGame {
     }
 
     const target = this.computerChooseAction();
+    if (this.computerDifficulty === ComputerDifficulty.HARD) {
+      this.executeComputerAction({ type: "play", target });
+      return;
+    }
+
     if (target === "opponent") {
       this.playCard(this.computer, this.player);
       if (!this.gameOver) {
@@ -731,13 +740,23 @@ class CardGame {
   }
 
   executeComputerAction(action) {
+    const shouldLearn = this.shouldUseHardSkillLearning();
+    const beforeScore = shouldLearn ? this.evaluatePositionForComputer() : 0;
+    const comboKeys = shouldLearn ? this.hardSkillComboKeysForAction(action) : [];
+    let success = false;
+
     if (action.type === "play") {
-      return this.applyPlayDecision("computer", action.target);
+      success = this.applyPlayDecision("computer", action.target);
+    } else if (action.skill === Skill.TAKE) {
+      success = action.takeTarget === null ? false : this.aiUseTake(action.takeTarget);
+    } else {
+      success = this.aiUseSkill(action.skill);
     }
-    if (action.skill === Skill.TAKE) {
-      return action.takeTarget === null ? false : this.aiUseTake(action.takeTarget);
+
+    if (success && shouldLearn) {
+      this.rememberHardSkillCombo(action, this.evaluatePositionForComputer() - beforeScore, 0.28, comboKeys);
     }
-    return this.aiUseSkill(action.skill);
+    return success;
   }
 
   applyPlayDecision(actorKey, targetChoice) {
@@ -772,8 +791,22 @@ class CardGame {
     const mediumScore = this.scoreComputerActionMedium(action);
     const searchScore = this.scoreTwoLayerSearch(action);
     const monteCarloScore = this.scoreMonteCarlo(action, 200);
+    const continuationScore = this.scoreHardContinuation(action);
+    const threatResponseScore = this.scoreHardThreatResponse(action);
+    const comboPotentialScore = this.scoreSkillComboPotential(action);
+    const learnedComboScore = this.scoreLearnedSkillCombos(action);
     const retentionPenalty = action.type === "skill" ? this.skillRetentionValue(this.computer, action.skill) * 0.65 : 0;
-    return mediumScore * 0.45 + searchScore * 0.55 + monteCarloScore * 0.35 - retentionPenalty;
+    const finalScore =
+      mediumScore * 0.45 +
+      searchScore * 0.55 +
+      monteCarloScore * 0.35 +
+      continuationScore * 0.42 +
+      threatResponseScore * 0.5 +
+      comboPotentialScore +
+      learnedComboScore -
+      retentionPenalty;
+    this.rememberHardSkillCombo(action, finalScore, 0.06);
+    return finalScore;
   }
 
   scoreComputerActionMedium(action) {
@@ -784,6 +817,239 @@ class CardGame {
       return this.scoreTakeSkill(action.takeTarget);
     }
     return this.scoreSkillForComputer(action.skill);
+  }
+
+  scoreHardContinuation(action) {
+    const clone = this.cloneForSimulation();
+    const beforeScore = clone.evaluatePositionForComputer();
+    if (!clone.applyComputerActionForSimulation(action)) {
+      return -999;
+    }
+    if (clone.gameOver) {
+      return clone.evaluatePositionForComputer() - beforeScore;
+    }
+    if (clone.turn !== "computer" || clone.computer.skipTurn) {
+      return clone.evaluatePositionForComputer() - clone.playerThreatEvaluation() * 0.35 - beforeScore;
+    }
+
+    const nextActions = clone.getHardContinuationActions();
+    let bestScore = clone.evaluatePositionForComputer() - clone.playerThreatEvaluation() * 0.2;
+    for (const nextAction of nextActions) {
+      const nextClone = clone.cloneForSimulation();
+      if (!nextClone.applyComputerActionForSimulation(nextAction)) {
+        continue;
+      }
+      let score = nextClone.evaluatePositionForComputer();
+      if (nextClone.turn === "player") {
+        score -= nextClone.playerThreatEvaluation() * 0.45;
+      }
+      bestScore = Math.max(bestScore, score);
+    }
+    return bestScore - beforeScore;
+  }
+
+  getHardContinuationActions() {
+    const skillActions = this.getComputerSkillActions()
+      .map((action) => [this.scoreComputerActionMedium(action) + this.scoreSkillComboPotential(action), action])
+      .filter(([score]) => score > -900)
+      .sort((a, b) => b[0] - a[0])
+      .slice(0, 5)
+      .map(([, action]) => action);
+    return [
+      ...skillActions,
+      { type: "play", target: "opponent" },
+      { type: "play", target: "self" },
+    ];
+  }
+
+  scoreHardThreatResponse(action) {
+    const beforeThreat = this.playerThreatEvaluation();
+    const clone = this.cloneForSimulation();
+    if (!clone.applyComputerActionForSimulation(action)) {
+      return -999;
+    }
+    const afterThreat = clone.playerThreatEvaluation();
+    let score = beforeThreat - afterThreat;
+    if (action.type === "skill" && action.skill === Skill.TAKE && action.takeTarget) {
+      score += this.skillThreatValueForPlayer(action.takeTarget) * 0.35;
+    }
+    if (action.type === "skill" && action.skill === Skill.FREEZE && !this.player.skipTurn) {
+      score += Math.min(beforeThreat * 0.35, 18);
+    }
+    return score;
+  }
+
+  shouldUseHardSkillLearning() {
+    return this.computerDifficulty === ComputerDifficulty.HARD && !this.silent && this.hardSkillComboMemory instanceof Map;
+  }
+
+  hardSkillSetForAction(action) {
+    const skills = [...this.computer.skills];
+    if (this.computer.amplifyActive) {
+      skills.push(Skill.AMPLIFY);
+    }
+    if (this.computer.overclockActive) {
+      skills.push(Skill.OVERCLOCK);
+    }
+    if (action.type === "skill") {
+      skills.push(action.skill);
+      if (action.skill === Skill.TAKE && action.takeTarget) {
+        skills.push(action.takeTarget);
+      }
+    }
+    return unique(skills).sort((a, b) => {
+      const priorityDiff = skillPriority(a) - skillPriority(b);
+      return priorityDiff !== 0 ? priorityDiff : a.localeCompare(b);
+    });
+  }
+
+  hardSkillComboKeysForAction(action) {
+    const skills = this.hardSkillSetForAction(action);
+    if (!skills.length) {
+      return [];
+    }
+
+    const anchors = [];
+    if (action.type === "skill") {
+      anchors.push(action.skill);
+      if (action.skill === Skill.TAKE && action.takeTarget) {
+        anchors.push(action.takeTarget);
+      }
+    } else {
+      if (this.computer.amplifyActive) {
+        anchors.push(Skill.AMPLIFY);
+      }
+      if (this.computer.overclockActive) {
+        anchors.push(Skill.OVERCLOCK);
+      }
+    }
+
+    const keys = new Set();
+    const maxSize = Math.min(3, skills.length);
+    const build = (start, combo, targetSize) => {
+      if (combo.length === targetSize) {
+        if (!anchors.length || combo.some((skill) => anchors.includes(skill))) {
+          keys.add(this.hardSkillComboKey(combo));
+        }
+        return;
+      }
+      for (let i = start; i < skills.length; i += 1) {
+        build(i + 1, [...combo, skills[i]], targetSize);
+      }
+    };
+
+    for (let size = 1; size <= maxSize; size += 1) {
+      build(0, [], size);
+    }
+    return [...keys];
+  }
+
+  hardSkillComboKey(skills) {
+    return [...skills]
+      .sort((a, b) => {
+        const priorityDiff = skillPriority(a) - skillPriority(b);
+        return priorityDiff !== 0 ? priorityDiff : a.localeCompare(b);
+      })
+      .join("+");
+  }
+
+  rememberHardSkillCombo(action, rawScore, learningRate = 0.1, presetKeys = null) {
+    if (!this.shouldUseHardSkillLearning()) {
+      return;
+    }
+    const keys = presetKeys ?? this.hardSkillComboKeysForAction(action);
+    if (!keys.length) {
+      return;
+    }
+
+    const signal = clamp(rawScore / 10, -18, 18);
+    this.hardSkillLearningTick += 1;
+    for (const key of keys) {
+      const size = key.split("+").length;
+      const rate = learningRate * (size === 1 ? 0.65 : size === 2 ? 1 : 1.15);
+      const entry = this.hardSkillComboMemory.get(key) ?? { score: 0, samples: 0, lastSeen: 0 };
+      entry.score = entry.score * (1 - rate) + signal * rate;
+      entry.samples = Math.min(entry.samples + 1, 99);
+      entry.lastSeen = this.hardSkillLearningTick;
+      this.hardSkillComboMemory.set(key, entry);
+    }
+    this.trimHardSkillComboMemory();
+  }
+
+  trimHardSkillComboMemory() {
+    if (this.hardSkillComboMemory.size <= HARD_SKILL_COMBO_MEMORY_LIMIT) {
+      return;
+    }
+    const ordered = [...this.hardSkillComboMemory.entries()].sort((a, b) => {
+      const importanceA = Math.abs(a[1].score) + a[1].samples * 0.08 + a[1].lastSeen * 0.002;
+      const importanceB = Math.abs(b[1].score) + b[1].samples * 0.08 + b[1].lastSeen * 0.002;
+      return importanceA - importanceB;
+    });
+    while (this.hardSkillComboMemory.size > HARD_SKILL_COMBO_MEMORY_LIMIT && ordered.length) {
+      this.hardSkillComboMemory.delete(ordered.shift()[0]);
+    }
+  }
+
+  scoreLearnedSkillCombos(action) {
+    const keys = this.hardSkillComboKeysForAction(action);
+    if (!keys.length || !(this.hardSkillComboMemory instanceof Map)) {
+      return 0;
+    }
+
+    let score = 0;
+    for (const key of keys) {
+      const entry = this.hardSkillComboMemory.get(key);
+      if (!entry) {
+        continue;
+      }
+      const size = key.split("+").length;
+      const confidence = Math.min(1, entry.samples / (size === 1 ? 8 : 5));
+      const weight = size === 1 ? 0.45 : size === 2 ? 0.9 : 1.1;
+      score += entry.score * confidence * weight;
+    }
+    return clamp(score, -24, 24);
+  }
+
+  scoreSkillComboPotential(action) {
+    const skills = this.hardSkillSetForAction(action);
+    const has = (skill) => skills.includes(skill);
+    const known = this.getKnownCard("computer", 0);
+    const blackProb = this.currentBlackProbabilityForComputer();
+    const damage = this.predictedBlackDamage(this.computer);
+    const playerThreat = this.playerThreatEvaluation();
+    let score = 0;
+
+    if (has(Skill.DETECT) && has(Skill.CONVERT)) {
+      score += known === null ? 8 : known === Card.WHITE ? 14 : 0;
+    }
+    if (has(Skill.DETECT) && (has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      score += known === null ? 7 : known === Card.BLACK ? 11 : 0;
+    }
+    if (has(Skill.CONVERT) && (has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      score += known === Card.WHITE ? 16 : known === null ? 5 : -4;
+    }
+    if (has(Skill.FREEZE) && (has(Skill.CONVERT) || has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      score += Math.min(playerThreat * 0.18, 12);
+    }
+    if (has(Skill.FREEZE) && damage >= this.player.hp && blackProb >= 0.35) {
+      score += 12;
+    }
+    if (has(Skill.TAKE) && this.player.skills.some((skill) => this.skillThreatValueForPlayer(skill) >= 10)) {
+      score += 8;
+    }
+    if (has(Skill.HEAL) && has(Skill.OVERCLOCK) && this.computer.hp <= 3) {
+      score += 6;
+    }
+    if (has(Skill.RISK) && has(Skill.OVERCLOCK) && this.computer.hp <= 2) {
+      score -= 8;
+    }
+    if (has(Skill.DETECT) && has(Skill.SHUFFLE) && this.computer.hp <= 2 && known === null) {
+      score += 7;
+    }
+    if (action.type === "skill" && [Skill.DETECT, Skill.CONVERT, Skill.FREEZE, Skill.TAKE].includes(action.skill)) {
+      score += 2;
+    }
+    return clamp(score, -18, 28);
   }
 
   scoreTwoLayerSearch(action) {
@@ -843,6 +1109,8 @@ class CardGame {
     clone.winner = this.winner;
     clone.logs = [];
     clone.computerDifficulty = this.computerDifficulty;
+    clone.hardSkillComboMemory = this.hardSkillComboMemory;
+    clone.hardSkillLearningTick = this.hardSkillLearningTick;
     clone.silent = true;
     return clone;
   }
@@ -1032,7 +1300,44 @@ class CardGame {
     return 1;
   }
 
+  playerSkillComboThreat() {
+    if (!this.player.skills.length) {
+      return 0;
+    }
+    const skills = unique(this.player.skills);
+    const has = (skill) => skills.includes(skill);
+    const known = this.getKnownCard("player", 0);
+    const blackProb = known === Card.BLACK ? 1 : known === Card.WHITE ? 0 : this.blackProbability();
+    let threat = 0;
+
+    if (has(Skill.DETECT) && has(Skill.CONVERT)) {
+      threat += known === null ? 10 : known === Card.WHITE ? 14 : 0;
+    }
+    if (has(Skill.CONVERT) && (has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      threat += known === Card.WHITE ? 16 : known === null ? 7 : 0;
+    }
+    if (has(Skill.DETECT) && (has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      threat += known === null ? 8 : known === Card.BLACK ? 12 : 0;
+    }
+    if (has(Skill.FREEZE) && (has(Skill.CONVERT) || has(Skill.AMPLIFY) || has(Skill.OVERCLOCK))) {
+      threat += 11;
+    }
+    if (has(Skill.TAKE) && this.computer.skills.some((skill) => this.skillRetentionValue(this.computer, skill) >= 10)) {
+      threat += 9;
+    }
+    if (has(Skill.OVERCLOCK) && this.player.hp > 1 && blackProb >= 0.45 && this.computer.hp <= 3) {
+      threat += 12;
+    }
+    if (has(Skill.AMPLIFY) && blackProb >= 0.45 && this.computer.hp <= 2) {
+      threat += 9;
+    }
+    return threat;
+  }
+
   playerThreatEvaluation() {
+    if (this.player.skipTurn) {
+      return this.player.skills.reduce((sum, skill) => sum + this.skillThreatValueForPlayer(skill), 0) * 0.2;
+    }
     const known = this.getKnownCard("player", 0);
     const blackProb = known === Card.BLACK ? 1 : known === Card.WHITE ? 0 : this.blackProbability();
     let damage = this.predictedBlackDamage(this.player);
@@ -1044,7 +1349,7 @@ class CardGame {
     }
     const lethal = damage >= this.computer.hp ? 40 : 0;
     const skillThreat = this.player.skills.reduce((sum, skill) => sum + this.skillThreatValueForPlayer(skill), 0);
-    return blackProb * damage * 20 + lethal + skillThreat * 0.6;
+    return blackProb * damage * 20 + lethal + skillThreat * 0.6 + this.playerSkillComboThreat();
   }
 
   evaluatePositionForComputer() {
@@ -1129,6 +1434,9 @@ class CardGame {
     if (!this.deck.length) {
       return 0;
     }
+    if (this.player.skipTurn) {
+      return 0;
+    }
 
     const playerKnown = this.getKnownCard("player", 0);
     let blackProb;
@@ -1178,6 +1486,7 @@ class CardGame {
     if (this.player.skills.includes(Skill.TAKE) && this.computer.skills.length) {
       danger += 6;
     }
+    danger += this.playerSkillComboThreat() * 0.65;
 
     return danger;
   }
