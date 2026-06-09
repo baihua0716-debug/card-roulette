@@ -13,6 +13,9 @@ import {
 const state = {
   game: new CardGame(),
   selectedSkillIndex: 0,
+  winStreak: 0,
+  currentGameId: 0,
+  scoredGameId: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -21,6 +24,7 @@ const elements = {
   computerPanel: $("#computerPanel"),
   playerPanel: $("#playerPanel"),
   turnBanner: $("#turnBanner"),
+  winStreakCount: $("#winStreakCount"),
   deckStats: $("#deckStats"),
   intelBox: $("#intelBox"),
   knownCardFace: $("#knownCardFace"),
@@ -289,8 +293,23 @@ function renderRules() {
     .join("");
 }
 
+function syncWinStreak() {
+  const game = state.game;
+  if (!game.gameOver || state.scoredGameId === state.currentGameId) {
+    return;
+  }
+
+  state.winStreak = game.winner === "玩家" ? state.winStreak + 1 : 0;
+  state.scoredGameId = state.currentGameId;
+}
+
+function renderWinStreak() {
+  elements.winStreakCount.textContent = String(state.winStreak);
+}
+
 function render() {
   const game = state.game;
+  syncWinStreak();
   elements.computerPanel.innerHTML = renderDuelist(game.computer, "智能电脑");
   elements.playerPanel.innerHTML = renderDuelist(game.player, "玩家");
 
@@ -303,6 +322,7 @@ function render() {
   renderDeck();
   renderActions();
   renderDifficultySelect();
+  renderWinStreak();
   renderPlayerSkills();
   renderComputerSkills();
   renderLogs();
@@ -319,6 +339,8 @@ function restartGamePreservingSettings() {
     state.game.hardSkillLearningTick = hardSkillLearningTick;
   }
   state.selectedSkillIndex = 0;
+  state.currentGameId += 1;
+  state.scoredGameId = null;
 }
 
 function bindEvents() {
