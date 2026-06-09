@@ -135,8 +135,7 @@ function renderActions() {
     elements.actionState.textContent = `${game.winner}获胜`;
     elements.actionButtons.append(
       makeButton("↻", "重新开始", "重新开始", () => {
-        state.game = new CardGame();
-        state.selectedSkillIndex = 0;
+        restartGamePreservingSettings();
         render();
       }, "primary"),
     );
@@ -309,18 +308,22 @@ function render() {
   renderLogs();
 }
 
+function restartGamePreservingSettings() {
+  const difficulty = state.game.computerDifficulty;
+  const hardSkillComboMemory = state.game.hardSkillComboMemory;
+  const hardSkillLearningTick = state.game.hardSkillLearningTick;
+  state.game = new CardGame();
+  state.game.computerDifficulty = difficulty;
+  if (hardSkillComboMemory instanceof Map) {
+    state.game.hardSkillComboMemory = new Map(hardSkillComboMemory);
+    state.game.hardSkillLearningTick = hardSkillLearningTick;
+  }
+  state.selectedSkillIndex = 0;
+}
+
 function bindEvents() {
   $("#resetButton").addEventListener("click", () => {
-    const difficulty = state.game.computerDifficulty;
-    const hardSkillComboMemory = state.game.hardSkillComboMemory;
-    const hardSkillLearningTick = state.game.hardSkillLearningTick;
-    state.game = new CardGame();
-    state.game.computerDifficulty = difficulty;
-    if (hardSkillComboMemory instanceof Map) {
-      state.game.hardSkillComboMemory = new Map(hardSkillComboMemory);
-      state.game.hardSkillLearningTick = hardSkillLearningTick;
-    }
-    state.selectedSkillIndex = 0;
+    restartGamePreservingSettings();
     render();
   });
 
