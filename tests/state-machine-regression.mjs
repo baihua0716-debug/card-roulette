@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { Card, CardGame, Skill, displaySkill } from "../game-core.js";
+import { Card, CardGame, Skill, SKILL_WEIGHTS, displaySkill } from "../game-core.js";
 
 function freshGame({
   deck = [Card.BLACK, Card.WHITE],
@@ -42,6 +42,18 @@ function withRandom(value, callback) {
 
 assert.equal(Skill.DETECT, "detect");
 assert.equal(displaySkill(Skill.DETECT), "探测");
+assert.equal(Skill.RISK, "risk");
+assert.equal(displaySkill(Skill.RISK), "涉险");
+assert.equal(SKILL_WEIGHTS[Skill.HEAL], 2);
+assert.equal(SKILL_WEIGHTS[Skill.SHUFFLE], 2);
+assert.equal(SKILL_WEIGHTS[Skill.AMPLIFY], 2);
+assert.equal(SKILL_WEIGHTS[Skill.DETECT], 2);
+assert.equal(SKILL_WEIGHTS[Skill.FREEZE], 1);
+assert.equal(SKILL_WEIGHTS[Skill.RISK], 1);
+assert.equal(SKILL_WEIGHTS[Skill.OMEN], 0.5);
+assert.equal(SKILL_WEIGHTS[Skill.TAKE], 0.5);
+assert.equal(SKILL_WEIGHTS[Skill.CONVERT], 0.5);
+assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
 
 {
   const game = new CardGame();
@@ -115,6 +127,15 @@ assert.equal(displaySkill(Skill.DETECT), "探测");
 }
 
 {
+  const game = freshGame({ playerSkills: [Skill.AMPLIFY] });
+  game.player.overclockActive = true;
+  assert.equal(game.playerUseSkillByIndex(0), false);
+  assert.equal(game.player.skills.length, 1);
+  assert.equal(game.player.amplifyActive, false);
+  assert.equal(game.player.overclockActive, true);
+}
+
+{
   const game = freshGame({ playerSkills: [Skill.FREEZE] });
   assert.equal(game.playerUseSkillByIndex(0), true);
   assert.equal(game.computer.skipTurn, true);
@@ -153,6 +174,38 @@ withRandom(0.75, () => {
 }
 
 {
+  const game = freshGame({ playerHp: 6, playerSkills: [Skill.OVERCLOCK] });
+  game.player.amplifyActive = true;
+  assert.equal(game.playerUseSkillByIndex(0), false);
+  assert.equal(game.player.hp, 6);
+  assert.equal(game.player.skills.length, 1);
+  assert.equal(game.player.amplifyActive, true);
+  assert.equal(game.player.overclockActive, false);
+}
+
+withRandom(0.25, () => {
+  const game = freshGame({ playerHp: 4, playerSkills: [Skill.RISK] });
+  assert.equal(game.playerUseSkillByIndex(0), true);
+  assert.equal(game.player.hp, 6);
+  assert.deepEqual(game.player.skills, []);
+});
+
+withRandom(0.75, () => {
+  const game = freshGame({ playerHp: 2, playerSkills: [Skill.RISK] });
+  assert.equal(game.playerUseSkillByIndex(0), true);
+  assert.equal(game.player.hp, 1);
+  assert.deepEqual(game.player.skills, []);
+});
+
+withRandom(0.75, () => {
+  const game = freshGame({ playerHp: 1, playerSkills: [Skill.RISK] });
+  assert.equal(game.playerUseSkillByIndex(0), true);
+  assert.equal(game.player.hp, 0);
+  assert.equal(game.gameOver, true);
+  assert.equal(game.winner, "电脑");
+});
+
+{
   const game = freshGame({ deck: [Card.WHITE, Card.BLACK] });
   game.knownPositions.player = { 0: Card.WHITE, 1: Card.BLACK };
   game.playerPlayToSelf();
@@ -169,6 +222,13 @@ withRandom(0.75, () => {
   game.useSkill = () => true;
   assert.equal(game.computerTryUseSkill(), true);
   assert.deepEqual(game.computer.skills, [Skill.SHUFFLE, Skill.HEAL]);
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK], computerSkills: [Skill.OVERCLOCK] });
+  game.computer.amplifyActive = true;
+  assert.equal(game.scoreSkillForComputer(Skill.OVERCLOCK), -999);
+  assert.equal(game.scoreTakeCandidate(Skill.OVERCLOCK), -999);
 }
 
 console.log("state-machine-regression: ok");

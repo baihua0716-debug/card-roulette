@@ -18,6 +18,7 @@ const Skill = Object.freeze({
   CONVERT: "convert",
   TAKE: "take",
   OVERCLOCK: "overclock",
+  RISK: "risk",
 });
 
 const SKILL_NAMES = Object.freeze({
@@ -30,18 +31,20 @@ const SKILL_NAMES = Object.freeze({
   [Skill.CONVERT]: "转换",
   [Skill.TAKE]: "夺取",
   [Skill.OVERCLOCK]: "超频",
+  [Skill.RISK]: "涉险",
 });
 
 const SKILL_DESCRIPTIONS = Object.freeze({
   [Skill.DETECT]: "查看当前这一张牌是黑卡还是白卡。",
   [Skill.SHUFFLE]: "洗掉当前这一张牌，并公开它是黑卡还是白卡。",
   [Skill.HEAL]: "回复 1 点血量，不能超过血量上限。",
-  [Skill.AMPLIFY]: "进入增幅状态：下一张由使用者打出的牌会消耗此状态；若为黑卡则造成 2 点伤害。",
+  [Skill.AMPLIFY]: "进入增幅状态：下一张由使用者打出的牌会消耗此状态；若为黑卡则造成 2 点伤害。不能与超频叠加。",
   [Skill.FREEZE]: "让另一方跳过下一个回合。",
   [Skill.OMEN]: "随机预知未来某一张牌的信息，不包括当前这一张。",
   [Skill.CONVERT]: "反转当前这一张牌的颜色，但不公开转换前后的结果。",
   [Skill.TAKE]: "夺取另一方一个技能，并立即使用它。不能连续夺取“夺取”。",
-  [Skill.OVERCLOCK]: "立刻扣 1 点血量，进入超频状态：下一次出牌若为黑卡，则造成 3 点伤害；若为白卡，超频状态也会消耗。",
+  [Skill.OVERCLOCK]: "立刻扣 1 点血量，进入超频状态：下一次出牌若为黑卡，则造成 3 点伤害；若为白卡，超频状态也会消耗。不能与增幅叠加。",
+  [Skill.RISK]: "涉险一搏：50% 概率回复 2 点血量，50% 概率失去 1 点血量。",
 });
 
 const SKILL_POOL = Object.freeze([
@@ -54,7 +57,21 @@ const SKILL_POOL = Object.freeze([
   Skill.CONVERT,
   Skill.TAKE,
   Skill.OVERCLOCK,
+  Skill.RISK,
 ]);
+
+const SKILL_WEIGHTS = Object.freeze({
+  [Skill.DETECT]: 2,
+  [Skill.SHUFFLE]: 2,
+  [Skill.HEAL]: 2,
+  [Skill.AMPLIFY]: 2,
+  [Skill.FREEZE]: 1,
+  [Skill.RISK]: 1,
+  [Skill.OMEN]: 0.5,
+  [Skill.CONVERT]: 0.5,
+  [Skill.TAKE]: 0.5,
+  [Skill.OVERCLOCK]: 0.5,
+});
 
 const AI_SKILL_PRIORITY = Object.freeze([
   Skill.TAKE,
@@ -64,6 +81,7 @@ const AI_SKILL_PRIORITY = Object.freeze([
   Skill.FREEZE,
   Skill.HEAL,
   Skill.DETECT,
+  Skill.RISK,
   Skill.OMEN,
   Skill.SHUFFLE,
 ]);
@@ -74,6 +92,19 @@ function randint(min, max) {
 
 function choice(items) {
   return items[randint(0, items.length - 1)];
+}
+
+function weightedChoice(weightMap) {
+  const entries = Object.entries(weightMap);
+  const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const [item, weight] of entries) {
+    roll -= weight;
+    if (roll < 0) {
+      return item;
+    }
+  }
+  return entries[entries.length - 1][0];
 }
 
 function shuffle(items) {
@@ -214,7 +245,7 @@ class CardGame {
     }
 
     const actualCount = Math.min(count, freeSlots);
-    const newSkills = Array.from({ length: actualCount }, () => choice(SKILL_POOL));
+    const newSkills = Array.from({ length: actualCount }, () => weightedChoice(SKILL_WEIGHTS));
     actor.skills.push(...newSkills);
     this.log(`${actor.name}获得了 ${actualCount} 个技能：${formatSkillList(newSkills)}`);
   }
@@ -580,6 +611,9 @@ class CardGame {
     if (this.player.skills.includes(Skill.FREEZE)) {
       danger += 6;
     }
+    if (this.player.skills.includes(Skill.RISK) && this.player.hp <= 3) {
+      danger += 4;
+    }
     if (this.player.skills.includes(Skill.TAKE) && this.computer.skills.length) {
       danger += 6;
     }
@@ -648,6 +682,24 @@ class CardGame {
       }
       if (danger >= 35) {
         score += 10;
+      }
+      return score;
+    }
+
+    if (skill === Skill.RISK) {
+      const missingHp = this.computer.maxHp - this.computer.hp;
+      if (missingHp <= 0) {
+        return -999;
+      }
+      let score = missingHp * 5 - 6;
+      if (this.computer.hp <= 2) {
+        score += 16;
+      }
+      if (danger >= 35) {
+        score += 8;
+      }
+      if (this.computer.hp <= 1) {
+        score -= 12;
       }
       return score;
     }
@@ -741,13 +793,10 @@ class CardGame {
     }
 
     if (skill === Skill.OVERCLOCK) {
-      if (this.computer.overclockActive || this.computer.hp <= 1) {
+      if (this.computer.overclockActive || this.computer.amplifyActive || this.computer.hp <= 1) {
         return -999;
       }
       if (known === Card.WHITE) {
-        return -999;
-      }
-      if (this.computer.amplifyActive && !(known === Card.BLACK && this.player.hp === 3)) {
         return -999;
       }
       let score = blackProb * 30 - 12;
@@ -827,6 +876,9 @@ class CardGame {
     if (selected === Skill.HEAL && this.player.hp <= 2) {
       denyBonus += 3;
     }
+    if (selected === Skill.RISK && this.player.hp <= 3) {
+      denyBonus += 2;
+    }
     return base + denyBonus;
   }
 
@@ -846,6 +898,20 @@ class CardGame {
       let score = 14;
       if (this.computer.hp <= 1) {
         score += 35;
+      }
+      return score;
+    }
+    if (skill === Skill.RISK) {
+      const missingHp = this.computer.maxHp - this.computer.hp;
+      if (missingHp <= 0) {
+        return -999;
+      }
+      let score = missingHp * 4;
+      if (this.computer.hp <= 2) {
+        score += 10;
+      }
+      if (this.computer.hp <= 1) {
+        score -= 10;
       }
       return score;
     }
@@ -887,10 +953,7 @@ class CardGame {
       return score;
     }
     if (skill === Skill.OVERCLOCK) {
-      if (this.computer.overclockActive || this.computer.hp <= 1 || known === Card.WHITE) {
-        return -999;
-      }
-      if (this.computer.amplifyActive && !(known === Card.BLACK && this.player.hp === 3)) {
+      if (this.computer.overclockActive || this.computer.amplifyActive || this.computer.hp <= 1 || known === Card.WHITE) {
         return -999;
       }
       let score = blackProb * 30 - 10;
@@ -957,8 +1020,16 @@ class CardGame {
       this.log(`${actor.name} 已处于增幅状态，增幅没有被使用。`);
       return false;
     }
+    if (skill === Skill.AMPLIFY && actor.overclockActive) {
+      this.log(`${actor.name} 已处于超频状态，不能叠加使用增幅。`);
+      return false;
+    }
     if (skill === Skill.OVERCLOCK && actor.overclockActive) {
       this.log(`${actor.name} 已处于超频状态，超频没有被使用。`);
+      return false;
+    }
+    if (skill === Skill.OVERCLOCK && actor.amplifyActive) {
+      this.log(`${actor.name} 已处于增幅状态，不能叠加使用超频。`);
       return false;
     }
     if (skill === Skill.OVERCLOCK && actor.hp <= 1) {
@@ -1011,6 +1082,8 @@ class CardGame {
       return this.useTakeDirect(actor, opponent, selected);
     } else if (skill === Skill.OVERCLOCK) {
       this.skillOverclock(actor);
+    } else if (skill === Skill.RISK) {
+      this.skillRisk(actor);
     } else {
       this.log("这个技能暂未实现。");
       return false;
@@ -1038,6 +1111,18 @@ class CardGame {
   skillHeal(actor) {
     const healed = actor.heal(1);
     this.log(`${actor.name} 回复了 ${healed} 点血量。当前血量：${actor.hp}/${actor.maxHp}`);
+  }
+
+  skillRisk(actor) {
+    if (Math.random() < 0.5) {
+      const healed = actor.heal(2);
+      this.log(`${actor.name} 涉险成功，回复了 ${healed} 点血量。当前血量：${actor.hp}/${actor.maxHp}`);
+      return;
+    }
+
+    actor.loseHp(1);
+    this.log(`${actor.name} 涉险失败，失去 1 点血量。当前血量：${actor.hp}/${actor.maxHp}`);
+    this.checkWinner();
   }
 
   skillAmplify(actor) {
@@ -1166,6 +1251,7 @@ export {
   SKILL_NAMES,
   SKILL_DESCRIPTIONS,
   SKILL_POOL,
+  SKILL_WEIGHTS,
   CardGame,
   clamp,
   displaySkill,
