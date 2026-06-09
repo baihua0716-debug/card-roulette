@@ -269,7 +269,7 @@ function renderDifficultySelect() {
 }
 
 function renderLogs() {
-  const logs = state.game.logs.slice(-80).reverse();
+  const logs = state.game.logs.slice(-80);
   if (!logs.length) {
     elements.logList.innerHTML = `<li>暂无日志。</li>`;
     return;
