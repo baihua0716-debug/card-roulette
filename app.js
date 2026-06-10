@@ -10,6 +10,29 @@ import {
   displaySkill,
 } from './game-core.js';
 
+const STORAGE_KEY = "cardRoulette:persistentState";
+const STORAGE_VERSION = 1;
+const STORAGE_SAVE_DELAY_MS = 120;
+const STORAGE_OPERATION_BUDGET_MS = 6;
+const MAX_PERSISTED_COMBO_ENTRIES = 96;
+const MAX_PERSISTED_JSON_CHARS = 24_000;
+const MAX_WIN_STREAK = 9_999;
+const MAX_LEARNING_TICK = 1_000_000;
+const VALID_DIFFICULTIES = new Set(Object.values(ComputerDifficulty));
+const VALID_SKILLS = new Set(Object.values(Skill));
+const STORED_SKILL_PRIORITY = [
+  Skill.TAKE,
+  Skill.OVERCLOCK,
+  Skill.AMPLIFY,
+  Skill.CONVERT,
+  Skill.FREEZE,
+  Skill.HEAL,
+  Skill.DETECT,
+  Skill.RISK,
+  Skill.OMEN,
+  Skill.SHUFFLE,
+];
+
 const state = {
   game: new CardGame(),
   selectedSkillIndex: 0,
@@ -17,6 +40,9 @@ const state = {
   currentGameId: 0,
   scoredGameId: null,
 };
+
+let storageAvailable = null;
+let pendingPersistTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -42,6 +68,224 @@ const elements = {
   rulesSkills: $("#rulesSkills"),
   rulesDialog: $("#rulesDialog"),
 };
+
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+
+function storageIsAvailable() {
+  if (storageAvailable !== null) {
+    return storageAvailable;
+  }
+  try {
+    const testKey = `${STORAGE_KEY}:test`;
+    window.localStorage.setItem(testKey, "1");
+    window.localStorage.removeItem(testKey);
+    storageAvailable = true;
+  } catch {
+    storageAvailable = false;
+  }
+  return storageAvailable;
+}
+
+function clampInteger(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.trunc(clamp(number, min, max));
+}
+
+function normalizeDifficulty(value) {
+  return VALID_DIFFICULTIES.has(value) ? value : ComputerDifficulty.MEDIUM;
+}
+
+function skillStorageRank(skill) {
+  const rank = STORED_SKILL_PRIORITY.indexOf(skill);
+  return rank === -1 ? STORED_SKILL_PRIORITY.length : rank;
+}
+
+function normalizeComboKey(key) {
+  if (typeof key !== "string" || key.length > 96) {
+    return null;
+  }
+  const skills = key.split("+");
+  if (!skills.length || skills.length > 3) {
+    return null;
+  }
+  if (skills.some((skill) => !VALID_SKILLS.has(skill)) || new Set(skills).size !== skills.length) {
+    return null;
+  }
+  return skills
+    .sort((a, b) => {
+      const rankDiff = skillStorageRank(a) - skillStorageRank(b);
+      return rankDiff !== 0 ? rankDiff : a.localeCompare(b);
+    })
+    .join("+");
+}
+
+function normalizeComboMemory(rawMemory, limit = MAX_PERSISTED_COMBO_ENTRIES) {
+  const rawEntries = Array.isArray(rawMemory)
+    ? rawMemory
+    : rawMemory && typeof rawMemory === "object" && Array.isArray(rawMemory.entries)
+      ? rawMemory.entries
+      : [];
+  const normalized = new Map();
+
+  for (const rawEntry of rawEntries) {
+    let key;
+    let value;
+    if (Array.isArray(rawEntry)) {
+      [key, value] = rawEntry;
+    } else if (rawEntry && typeof rawEntry === "object") {
+      key = rawEntry.key;
+      value = rawEntry;
+    }
+
+    const normalizedKey = normalizeComboKey(key);
+    if (!normalizedKey || !value || typeof value !== "object") {
+      continue;
+    }
+
+    const entry = {
+      score: Number(value.score),
+      samples: clampInteger(value.samples, 0, 99, 0),
+      lastSeen: clampInteger(value.lastSeen, 0, MAX_LEARNING_TICK, 0),
+    };
+    if (!Number.isFinite(entry.score)) {
+      continue;
+    }
+    entry.score = clamp(entry.score, -18, 18);
+    normalized.set(normalizedKey, entry);
+  }
+
+  return new Map(
+    [...normalized.entries()]
+      .sort((a, b) => {
+        const importanceA = Math.abs(a[1].score) + a[1].samples * 0.08 + a[1].lastSeen * 0.002;
+        const importanceB = Math.abs(b[1].score) + b[1].samples * 0.08 + b[1].lastSeen * 0.002;
+        return importanceB - importanceA;
+      })
+      .slice(0, limit),
+  );
+}
+
+function serializeComboMemory(limit = MAX_PERSISTED_COMBO_ENTRIES) {
+  return [...normalizeComboMemory([...state.game.hardSkillComboMemory.entries()], limit).entries()];
+}
+
+function buildPersistentSnapshot(memoryLimit = MAX_PERSISTED_COMBO_ENTRIES) {
+  const memory = serializeComboMemory(memoryLimit);
+  const maxLastSeen = memory.reduce((max, [, entry]) => Math.max(max, entry.lastSeen), 0);
+  return {
+    version: STORAGE_VERSION,
+    savedAt: Date.now(),
+    winStreak: clampInteger(state.winStreak, 0, MAX_WIN_STREAK, 0),
+    computerDifficulty: normalizeDifficulty(state.game.computerDifficulty),
+    hardSkillLearningTick: Math.max(
+      clampInteger(state.game.hardSkillLearningTick, 0, MAX_LEARNING_TICK, 0),
+      maxLastSeen,
+    ),
+    hardSkillComboMemory: memory,
+  };
+}
+
+function writePersistentSnapshot(memoryLimit = MAX_PERSISTED_COMBO_ENTRIES) {
+  if (!storageIsAvailable()) {
+    return false;
+  }
+
+  const started = nowMs();
+  let snapshot = buildPersistentSnapshot(memoryLimit);
+  let json = JSON.stringify(snapshot);
+  if (nowMs() - started > STORAGE_OPERATION_BUDGET_MS || json.length > MAX_PERSISTED_JSON_CHARS) {
+    snapshot = buildPersistentSnapshot(Math.min(memoryLimit, 48));
+    json = JSON.stringify(snapshot);
+  }
+  if (json.length > MAX_PERSISTED_JSON_CHARS) {
+    snapshot = buildPersistentSnapshot(16);
+    json = JSON.stringify(snapshot);
+  }
+  if (json.length > MAX_PERSISTED_JSON_CHARS) {
+    snapshot.hardSkillComboMemory = [];
+    json = JSON.stringify(snapshot);
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, json);
+    return true;
+  } catch {
+    try {
+      snapshot.hardSkillComboMemory = [];
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      return true;
+    } catch {
+      storageAvailable = false;
+      return false;
+    }
+  }
+}
+
+function schedulePersistentStateSave() {
+  if (!storageIsAvailable()) {
+    return;
+  }
+  window.clearTimeout(pendingPersistTimer);
+  pendingPersistTimer = window.setTimeout(() => {
+    pendingPersistTimer = null;
+    writePersistentSnapshot();
+  }, STORAGE_SAVE_DELAY_MS);
+}
+
+function flushPersistentState() {
+  if (pendingPersistTimer !== null) {
+    window.clearTimeout(pendingPersistTimer);
+    pendingPersistTimer = null;
+  }
+  writePersistentSnapshot();
+}
+
+function loadPersistentState() {
+  if (!storageIsAvailable()) {
+    return;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+    if (raw.length > MAX_PERSISTED_JSON_CHARS * 2) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+
+    const payload = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+
+    state.winStreak = clampInteger(payload.winStreak ?? payload.streak, 0, MAX_WIN_STREAK, 0);
+    state.game.computerDifficulty = normalizeDifficulty(payload.computerDifficulty ?? payload.difficulty);
+    const memory = normalizeComboMemory(payload.hardSkillComboMemory ?? payload.skillComboMemory);
+    state.game.hardSkillComboMemory = memory;
+    const maxLastSeen = [...memory.values()].reduce((max, entry) => Math.max(max, entry.lastSeen), 0);
+    state.game.hardSkillLearningTick = Math.max(
+      clampInteger(payload.hardSkillLearningTick, 0, MAX_LEARNING_TICK, 0),
+      maxLastSeen,
+    );
+
+    if (payload.version !== STORAGE_VERSION || memory.size !== (payload.hardSkillComboMemory?.length ?? memory.size)) {
+      schedulePersistentStateSave();
+    }
+  } catch {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      storageAvailable = false;
+    }
+  }
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -326,6 +570,7 @@ function render() {
   renderPlayerSkills();
   renderComputerSkills();
   renderLogs();
+  schedulePersistentStateSave();
 }
 
 function restartGamePreservingSettings() {
@@ -387,6 +632,8 @@ function bindEvents() {
   });
 }
 
+loadPersistentState();
 renderRules();
 bindEvents();
+window.addEventListener("pagehide", flushPersistentState);
 render();
