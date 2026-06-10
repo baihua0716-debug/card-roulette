@@ -18,6 +18,8 @@ const MAX_PERSISTED_COMBO_ENTRIES = 96;
 const MAX_PERSISTED_JSON_CHARS = 24_000;
 const MAX_WIN_STREAK = 9_999;
 const MAX_LEARNING_TICK = 1_000_000;
+const ANIMATION_DURATION_MS = 760;
+const ACTION_FLASH_DURATION_MS = 1_150;
 const VALID_DIFFICULTIES = new Set(Object.values(ComputerDifficulty));
 const VALID_SKILLS = new Set(Object.values(Skill));
 const STORED_SKILL_PRIORITY = [
@@ -43,6 +45,7 @@ const state = {
 
 let storageAvailable = null;
 let pendingPersistTimer = null;
+let actionFlashTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -50,6 +53,8 @@ const elements = {
   computerPanel: $("#computerPanel"),
   playerPanel: $("#playerPanel"),
   turnBanner: $("#turnBanner"),
+  actionFlash: $("#actionFlash"),
+  deckVisual: $("#deckVisual"),
   winStreakCount: $("#winStreakCount"),
   deckStats: $("#deckStats"),
   intelBox: $("#intelBox"),
@@ -296,6 +301,122 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function captureActionState() {
+  const game = state.game;
+  return {
+    playerHp: game.player.hp,
+    computerHp: game.computer.hp,
+    deckLength: game.deck.length,
+    turn: game.turn,
+    gameOver: game.gameOver,
+    winner: game.winner,
+    logLength: game.logs.length,
+    playerSkillCount: game.player.skills.length,
+    computerSkillCount: game.computer.skills.length,
+  };
+}
+
+function pulseElement(element, className, duration = ANIMATION_DURATION_MS) {
+  if (!element) {
+    return;
+  }
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
+  window.setTimeout(() => element.classList.remove(className), duration);
+}
+
+function pickActionFlashMessage(logs) {
+  const ignorePatterns = [
+    /^—— 轮到电脑 ——$/,
+    /^具体顺序未知/,
+    /^本轮共有/,
+    /状态结束。$/,
+  ];
+  const candidates = logs
+    .map((log) => log.trim())
+    .filter((log) => log && !ignorePatterns.some((pattern) => pattern.test(log)));
+  return candidates.at(-1) ?? "";
+}
+
+function showActionFlash(message) {
+  if (!message || !elements.actionFlash) {
+    return;
+  }
+  window.clearTimeout(actionFlashTimer);
+  elements.actionFlash.textContent = message;
+  elements.actionFlash.classList.remove("is-visible");
+  void elements.actionFlash.offsetWidth;
+  elements.actionFlash.classList.add("is-visible");
+  actionFlashTimer = window.setTimeout(() => {
+    elements.actionFlash.classList.remove("is-visible");
+  }, ACTION_FLASH_DURATION_MS);
+}
+
+function playActionAnimations(before) {
+  const game = state.game;
+  const logs = game.logs.slice(before.logLength);
+  const logText = logs.join("\n");
+
+  if (logs.length) {
+    showActionFlash(pickActionFlashMessage(logs));
+  }
+
+  if (
+    game.deck.length !== before.deckLength ||
+    /出牌|洗掉|转换|新一轮牌序|结束本轮/.test(logText)
+  ) {
+    pulseElement(elements.deckVisual, "is-card-action", 700);
+  }
+
+  if (game.player.hp < before.playerHp) {
+    pulseElement(elements.playerPanel, "is-damaged");
+  } else if (game.player.hp > before.playerHp) {
+    pulseElement(elements.playerPanel, "is-healed");
+  }
+
+  if (game.computer.hp < before.computerHp) {
+    pulseElement(elements.computerPanel, "is-damaged");
+  } else if (game.computer.hp > before.computerHp) {
+    pulseElement(elements.computerPanel, "is-healed");
+  }
+
+  if (
+    game.player.hp === before.playerHp &&
+    /你 使用了技能|你探测|你 涉险|你 回复|你 进入|电脑 被冻结/.test(logText)
+  ) {
+    pulseElement(elements.playerPanel, "is-skill-action");
+  }
+  if (
+    game.computer.hp === before.computerHp &&
+    /电脑 使用了技能|电脑探测|电脑 涉险|电脑 回复|电脑 进入|你 被冻结/.test(logText)
+  ) {
+    pulseElement(elements.computerPanel, "is-skill-action");
+  }
+
+  if (
+    game.turn !== before.turn ||
+    game.gameOver !== before.gameOver ||
+    game.winner !== before.winner
+  ) {
+    pulseElement(elements.turnBanner, "is-turn-change", 650);
+  }
+
+  if (game.player.skills.length !== before.playerSkillCount) {
+    pulseElement(elements.playerSkills, "is-skill-list-change");
+  }
+  if (game.computer.skills.length !== before.computerSkillCount) {
+    pulseElement(elements.computerSkills, "is-skill-list-change");
+  }
+}
+
+function runAnimatedAction(action) {
+  const before = captureActionState();
+  action();
+  render();
+  playActionAnimations(before);
+}
+
 function effectPills(player, perspective) {
   const effects = [];
   const pronoun = perspective === "player" ? "你" : "电脑";
@@ -383,8 +504,7 @@ function renderActions() {
     elements.actionState.textContent = `${game.winner}获胜`;
     elements.actionButtons.append(
       makeButton("↻", "重新开始", "重新开始", () => {
-        restartGamePreservingSettings();
-        render();
+        runAnimatedAction(() => restartGamePreservingSettings());
       }, "primary"),
     );
     return;
@@ -394,8 +514,7 @@ function renderActions() {
     elements.actionState.textContent = "电脑回合";
     elements.actionButtons.append(
       makeButton("▶", "执行电脑行动", "继续执行电脑行动", () => {
-        game.resolveComputerUntilPlayer();
-        render();
+        runAnimatedAction(() => game.resolveComputerUntilPlayer());
       }, "primary"),
     );
     return;
@@ -405,9 +524,10 @@ function renderActions() {
     elements.actionState.textContent = "冻结";
     elements.actionButtons.append(
       makeButton("⏭", "跳过回合", "跳过被冻结的回合", () => {
-        game.playerSkipFrozenTurn();
-        game.resolveComputerUntilPlayer();
-        render();
+        runAnimatedAction(() => {
+          game.playerSkipFrozenTurn();
+          game.resolveComputerUntilPlayer();
+        });
       }, "primary"),
     );
     return;
@@ -416,22 +536,23 @@ function renderActions() {
   elements.actionState.textContent = "你的回合";
   elements.actionButtons.append(
     makeButton("◆", "对电脑出牌", "对电脑出牌", () => {
-      game.playerPlayToComputer();
-      game.resolveComputerUntilPlayer();
-      render();
+      runAnimatedAction(() => {
+        game.playerPlayToComputer();
+        game.resolveComputerUntilPlayer();
+      });
     }, "primary"),
     makeButton("◇", "对己方出牌", "对己方出牌", () => {
-      game.playerPlayToSelf();
-      game.resolveComputerUntilPlayer();
-      render();
+      runAnimatedAction(() => {
+        game.playerPlayToSelf();
+        game.resolveComputerUntilPlayer();
+      });
     }),
   );
 
   if (game.onlyWhiteCardsLeft()) {
     elements.actionButtons.append(
       makeButton("↺", "结束本轮", "剩余牌均为白卡，直接进入下一轮", () => {
-        game.playerEndRoundIfOnlyWhite();
-        render();
+        runAnimatedAction(() => game.playerEndRoundIfOnlyWhite());
       }, "ghost"),
     );
   }
@@ -607,11 +728,12 @@ function bindEvents() {
   });
 
   elements.useSkillButton.addEventListener("click", () => {
-    const selectedSkill = state.game.player.skills[state.selectedSkillIndex] ?? null;
-    const takeTargetIndex = selectedSkill === Skill.TAKE ? Number(elements.takeTargetSelect.value) : null;
-    state.game.playerUseSkillByIndex(state.selectedSkillIndex, Number.isNaN(takeTargetIndex) ? null : takeTargetIndex);
-    state.game.resolveComputerUntilPlayer();
-    render();
+    runAnimatedAction(() => {
+      const selectedSkill = state.game.player.skills[state.selectedSkillIndex] ?? null;
+      const takeTargetIndex = selectedSkill === Skill.TAKE ? Number(elements.takeTargetSelect.value) : null;
+      state.game.playerUseSkillByIndex(state.selectedSkillIndex, Number.isNaN(takeTargetIndex) ? null : takeTargetIndex);
+      state.game.resolveComputerUntilPlayer();
+    });
   });
 
   elements.difficultySelect.addEventListener("change", () => {

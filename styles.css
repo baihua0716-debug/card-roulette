@@ -372,6 +372,7 @@ h3 {
 }
 
 .deck-zone {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(145px, 1fr) auto auto;
   gap: 10px;
@@ -392,6 +393,31 @@ h3 {
   color: var(--text);
   background: rgba(0, 0, 0, 0.18);
   font-weight: 800;
+}
+
+.action-flash {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 58px;
+  max-width: calc(100% - 28px);
+  transform: translate(-50%, -8px) scale(0.98);
+  border: 1px solid rgba(215, 180, 90, 0.62);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  color: var(--text);
+  background: rgba(17, 19, 17, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.action-flash.is-visible {
+  animation: action-flash-pop 1150ms ease both;
 }
 
 .deck-visual {
@@ -442,6 +468,31 @@ h3 {
   background:
     radial-gradient(circle at center, transparent 0 34%, rgba(215, 180, 90, 0.22) 35% 38%, transparent 39%),
     var(--black-card);
+}
+
+.deck-visual.is-card-action {
+  animation: deck-card-action 700ms cubic-bezier(0.18, 0.82, 0.24, 1) both;
+}
+
+.duelist.is-damaged {
+  animation: duelist-damaged 760ms ease both;
+}
+
+.duelist.is-healed {
+  animation: duelist-healed 760ms ease both;
+}
+
+.duelist.is-skill-action {
+  animation: duelist-skill-action 760ms ease both;
+}
+
+.turn-banner.is-turn-change {
+  animation: turn-change-pulse 650ms ease both;
+}
+
+.skill-list.is-skill-list-change,
+.opponent-skills.is-skill-list-change {
+  animation: skill-list-pulse 760ms ease both;
 }
 
 .deck-stats,
@@ -686,6 +737,123 @@ h3 {
 .rules-skill span {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+@keyframes action-flash-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+  15%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.98);
+  }
+}
+
+@keyframes deck-card-action {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    filter: brightness(1);
+  }
+  35% {
+    transform: translateY(-10px) rotate(-2deg);
+    filter: brightness(1.22);
+  }
+  70% {
+    transform: translateY(3px) rotate(1deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+    filter: brightness(1);
+  }
+}
+
+@keyframes duelist-damaged {
+  0%,
+  100% {
+    transform: translateX(0);
+    box-shadow: none;
+  }
+  18% {
+    transform: translateX(-4px);
+    box-shadow: 0 0 0 2px rgba(181, 43, 69, 0.62), 0 18px 44px rgba(181, 43, 69, 0.24);
+  }
+  36% {
+    transform: translateX(4px);
+  }
+  54% {
+    transform: translateX(-2px);
+  }
+  72% {
+    transform: translateX(1px);
+  }
+}
+
+@keyframes duelist-healed {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  38% {
+    box-shadow: 0 0 0 2px rgba(17, 119, 100, 0.72), 0 18px 44px rgba(17, 119, 100, 0.26);
+  }
+}
+
+@keyframes duelist-skill-action {
+  0%,
+  100% {
+    border-color: rgba(246, 242, 232, 0.15);
+  }
+  42% {
+    border-color: rgba(215, 180, 90, 0.86);
+    box-shadow: 0 0 0 2px rgba(215, 180, 90, 0.18);
+  }
+}
+
+@keyframes turn-change-pulse {
+  0%,
+  100% {
+    border-color: rgba(246, 242, 232, 0.16);
+  }
+  45% {
+    border-color: rgba(215, 180, 90, 0.82);
+    background: rgba(215, 180, 90, 0.16);
+  }
+}
+
+@keyframes skill-list-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  45% {
+    filter: brightness(1.22);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .action-flash.is-visible,
+  .deck-visual.is-card-action,
+  .duelist.is-damaged,
+  .duelist.is-healed,
+  .duelist.is-skill-action,
+  .turn-banner.is-turn-change,
+  .skill-list.is-skill-list-change,
+  .opponent-skills.is-skill-list-change {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 @media (max-width: 1100px) {
