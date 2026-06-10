@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="黑卡 / 白卡概率博弈网页游戏" />
     <title>卡牌轮盘</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260610-save-clear" />
   </head>
   <body>
     <div class="app-shell">
@@ -26,6 +26,10 @@
           <button class="icon-button reset-button" id="resetButton" type="button" title="重新开始">
             <span aria-hidden="true">↻</span>
             <span>重开</span>
+          </button>
+          <button class="icon-button reset-button" id="clearSaveButton" type="button" title="清除本机缓存存档">
+            <span aria-hidden="true">⌫</span>
+            <span>清存档</span>
           </button>
         </div>
       </header>
@@ -119,6 +123,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260610-save-clear"></script>
   </body>
 </html>

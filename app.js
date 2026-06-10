@@ -53,6 +53,7 @@ const $ = (selector) => document.querySelector(selector);
 
 const elements = {
   resetButton: $("#resetButton"),
+  clearSaveButton: $("#clearSaveButton"),
   computerPanel: $("#computerPanel"),
   playerPanel: $("#playerPanel"),
   turnBanner: $("#turnBanner"),
@@ -250,6 +251,28 @@ function flushPersistentState() {
     pendingPersistTimer = null;
   }
   writePersistentSnapshot();
+}
+
+function clearPersistentState() {
+  if (pendingPersistTimer !== null) {
+    window.clearTimeout(pendingPersistTimer);
+    pendingPersistTimer = null;
+  }
+
+  if (storageIsAvailable()) {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      storageAvailable = false;
+    }
+  }
+
+  state.winStreak = 0;
+  state.scoredGameId = state.game.gameOver ? state.currentGameId : null;
+  state.game.computerDifficulty = ComputerDifficulty.MEDIUM;
+  state.game.hardSkillComboMemory = new Map();
+  state.game.hardSkillLearningTick = 0;
+  state.game.log("已清除本机缓存存档：连胜、难度和困难 AI 学习记忆已重置。");
 }
 
 function loadPersistentState() {
@@ -471,10 +494,10 @@ function renderDuelist(player, roleText) {
         </div>
         <div class="hp-number">${Math.max(player.hp, 0)}/${player.maxHp}</div>
       </div>
+      <div class="effects">${effectHtml}</div>
       <div class="health-track" aria-label="${escapeHtml(player.name)}血量">
         <span class="health-fill" style="width:${hpRatio}%"></span>
       </div>
-      <div class="effects">${effectHtml}</div>
     </div>
     <div class="stats-row">
       <div class="stat"><span>持有技能</span><strong>${player.skills.length}/${state.game.maxSkills}</strong></div>
@@ -706,6 +729,7 @@ function render() {
   const game = state.game;
   syncWinStreak();
   elements.resetButton.disabled = state.isComputerPlayback;
+  elements.clearSaveButton.disabled = state.isComputerPlayback;
   elements.computerPanel.innerHTML = renderDuelist(game.computer, "智能电脑");
   elements.playerPanel.innerHTML = renderDuelist(game.player, "玩家");
 
@@ -746,6 +770,17 @@ function bindEvents() {
       return;
     }
     restartGamePreservingSettings();
+    render();
+  });
+
+  elements.clearSaveButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
+    if (!window.confirm("清除本机缓存存档？连胜、难度和困难 AI 学习记忆会重置。")) {
+      return;
+    }
+    clearPersistentState();
     render();
   });
 
