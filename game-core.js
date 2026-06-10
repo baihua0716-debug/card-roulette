@@ -205,6 +205,8 @@ class CardGame {
     this.computerDifficulty = ComputerDifficulty.MEDIUM;
     this.hardSkillComboMemory = new Map();
     this.hardSkillLearningTick = 0;
+    this.computerSkillUsesThisTurn = 0;
+    this.computerTurnAnnounced = false;
     this.silent = false;
     this.newRoundDeck();
   }
@@ -234,6 +236,8 @@ class CardGame {
     this.player.skipTurn = false;
     this.computer.skipTurn = false;
     this.redealtThisTurn = true;
+    this.computerSkillUsesThisTurn = 0;
+    this.computerTurnAnnounced = false;
 
     this.log("—— 新一轮牌序已生成 ——");
     this.log(`本轮共有 ${total} 张牌：${blackCount} 张黑卡，${whiteCount} 张白卡。`);
@@ -461,6 +465,101 @@ class CardGame {
     if (steps >= maxTurns && this.turn === "computer") {
       this.log("电脑连续行动次数较多，已暂停。你可以点击按钮继续执行电脑行动。");
     }
+  }
+
+  resetComputerActionStepState() {
+    this.computerSkillUsesThisTurn = 0;
+    this.computerTurnAnnounced = false;
+  }
+
+  computerActionStepOnce() {
+    if (this.turn !== "computer" || this.gameOver) {
+      this.resetComputerActionStepState();
+      return false;
+    }
+
+    if (!this.computerTurnAnnounced) {
+      this.log("—— 轮到电脑 ——");
+      this.computerTurnAnnounced = true;
+      this.computerSkillUsesThisTurn = 0;
+    }
+
+    if (this.computer.skipTurn) {
+      this.computer.skipTurn = false;
+      this.turn = "player";
+      this.log("电脑受到冻结影响，跳过了这个回合。");
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    if (this.onlyWhiteCardsLeft()) {
+      this.endRoundBecauseOnlyWhite(this.computer);
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    if (this.checkWinner()) {
+      this.resetComputerActionStepState();
+      return false;
+    }
+
+    this.ensureDeck();
+
+    if (this.redealtThisTurn && this.turn === "player") {
+      this.redealtThisTurn = false;
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    if (this.turn !== "computer" || this.gameOver) {
+      this.resetComputerActionStepState();
+      return false;
+    }
+
+    if (this.onlyWhiteCardsLeft()) {
+      this.endRoundBecauseOnlyWhite(this.computer);
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    const maxSkillUses = this.computerDifficulty === ComputerDifficulty.EASY ? 1 : 7;
+    if (this.computerSkillUsesThisTurn < maxSkillUses) {
+      const used = this.computerTryUseSkill();
+      if (this.redealtThisTurn && this.turn === "player") {
+        this.redealtThisTurn = false;
+        this.resetComputerActionStepState();
+        return true;
+      }
+      if (this.checkWinner()) {
+        this.resetComputerActionStepState();
+        return true;
+      }
+      if (used) {
+        this.computerSkillUsesThisTurn += 1;
+        return true;
+      }
+    }
+
+    if (this.redealtThisTurn && this.turn === "player") {
+      this.redealtThisTurn = false;
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    if (this.onlyWhiteCardsLeft()) {
+      this.endRoundBecauseOnlyWhite(this.computer);
+      this.resetComputerActionStepState();
+      return true;
+    }
+
+    const target = this.computerChooseAction();
+    if (this.computerDifficulty === ComputerDifficulty.HARD) {
+      this.executeComputerAction({ type: "play", target });
+    } else {
+      this.applyPlayDecision("computer", target);
+    }
+    this.resetComputerActionStepState();
+    return true;
   }
 
   computerTurnOnce() {
@@ -1121,6 +1220,8 @@ class CardGame {
     clone.computerDifficulty = this.computerDifficulty;
     clone.hardSkillComboMemory = this.hardSkillComboMemory;
     clone.hardSkillLearningTick = this.hardSkillLearningTick;
+    clone.computerSkillUsesThisTurn = this.computerSkillUsesThisTurn;
+    clone.computerTurnAnnounced = this.computerTurnAnnounced;
     clone.silent = true;
     return clone;
   }

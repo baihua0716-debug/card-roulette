@@ -26,6 +26,8 @@ function freshGame({
   game.gameOver = false;
   game.winner = null;
   game.redealtThisTurn = false;
+  game.computerSkillUsesThisTurn = 0;
+  game.computerTurnAnnounced = false;
   game.logs = [];
   return game;
 }
@@ -114,6 +116,22 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   game.computerTurnOnce();
   assert.equal(game.deck.length, 8);
   assert.equal(game.turn, "player");
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE], computerSkills: [Skill.DETECT] });
+  game.turn = "computer";
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.getKnownCard("computer", 0), Card.BLACK);
+  assert.deepEqual(game.computer.skills, []);
+  assert.equal(game.turn, "computer");
+  assert.equal(game.computerSkillUsesThisTurn, 1);
+
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.deepEqual(game.deck, [Card.WHITE]);
+  assert.equal(game.turn, "player");
+  assert.equal(game.computerSkillUsesThisTurn, 0);
+  assert.equal(game.computerTurnAnnounced, false);
 }
 
 {

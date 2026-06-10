@@ -19,7 +19,9 @@ const MAX_PERSISTED_JSON_CHARS = 24_000;
 const MAX_WIN_STREAK = 9_999;
 const MAX_LEARNING_TICK = 1_000_000;
 const ANIMATION_DURATION_MS = 760;
-const ACTION_FLASH_DURATION_MS = 1_150;
+const COMPUTER_ACTION_DELAY_MS = 260;
+const COMPUTER_ACTION_OBSERVE_MS = 260;
+const COMPUTER_ACTION_MAX_STEPS = 32;
 const VALID_DIFFICULTIES = new Set(Object.values(ComputerDifficulty));
 const VALID_SKILLS = new Set(Object.values(Skill));
 const STORED_SKILL_PRIORITY = [
@@ -41,19 +43,19 @@ const state = {
   winStreak: 0,
   currentGameId: 0,
   scoredGameId: null,
+  isComputerPlayback: false,
 };
 
 let storageAvailable = null;
 let pendingPersistTimer = null;
-let actionFlashTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
 const elements = {
+  resetButton: $("#resetButton"),
   computerPanel: $("#computerPanel"),
   playerPanel: $("#playerPanel"),
   turnBanner: $("#turnBanner"),
-  actionFlash: $("#actionFlash"),
   deckVisual: $("#deckVisual"),
   winStreakCount: $("#winStreakCount"),
   deckStats: $("#deckStats"),
@@ -301,6 +303,12 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 function captureActionState() {
   const game = state.game;
   return {
@@ -326,41 +334,10 @@ function pulseElement(element, className, duration = ANIMATION_DURATION_MS) {
   window.setTimeout(() => element.classList.remove(className), duration);
 }
 
-function pickActionFlashMessage(logs) {
-  const ignorePatterns = [
-    /^—— 轮到电脑 ——$/,
-    /^具体顺序未知/,
-    /^本轮共有/,
-    /状态结束。$/,
-  ];
-  const candidates = logs
-    .map((log) => log.trim())
-    .filter((log) => log && !ignorePatterns.some((pattern) => pattern.test(log)));
-  return candidates.at(-1) ?? "";
-}
-
-function showActionFlash(message) {
-  if (!message || !elements.actionFlash) {
-    return;
-  }
-  window.clearTimeout(actionFlashTimer);
-  elements.actionFlash.textContent = message;
-  elements.actionFlash.classList.remove("is-visible");
-  void elements.actionFlash.offsetWidth;
-  elements.actionFlash.classList.add("is-visible");
-  actionFlashTimer = window.setTimeout(() => {
-    elements.actionFlash.classList.remove("is-visible");
-  }, ACTION_FLASH_DURATION_MS);
-}
-
 function playActionAnimations(before) {
   const game = state.game;
   const logs = game.logs.slice(before.logLength);
   const logText = logs.join("\n");
-
-  if (logs.length) {
-    showActionFlash(pickActionFlashMessage(logs));
-  }
 
   if (
     game.deck.length !== before.deckLength ||
@@ -410,11 +387,57 @@ function playActionAnimations(before) {
   }
 }
 
-function runAnimatedAction(action) {
+async function playComputerTurnsAnimated({ lockAlreadyHeld = false } = {}) {
+  if (state.isComputerPlayback && !lockAlreadyHeld) {
+    return;
+  }
+  if (!lockAlreadyHeld) {
+    state.isComputerPlayback = true;
+    render();
+  }
+
+  let steps = 0;
+  try {
+    while (state.game.turn === "computer" && !state.game.gameOver && steps < COMPUTER_ACTION_MAX_STEPS) {
+      await wait(COMPUTER_ACTION_DELAY_MS);
+      const before = captureActionState();
+      const advanced = typeof state.game.computerActionStepOnce === "function"
+        ? state.game.computerActionStepOnce()
+        : (state.game.computerTurnOnce(), true);
+      render();
+      playActionAnimations(before);
+      steps += 1;
+      if (!advanced) {
+        break;
+      }
+      await wait(COMPUTER_ACTION_OBSERVE_MS);
+    }
+
+    if (steps >= COMPUTER_ACTION_MAX_STEPS && state.game.turn === "computer" && !state.game.gameOver) {
+      state.game.log("电脑连续行动次数较多，已暂停。你可以点击按钮继续执行电脑行动。");
+    }
+  } finally {
+    state.isComputerPlayback = false;
+    render();
+  }
+}
+
+async function runAnimatedAction(action, options = {}) {
+  if (state.isComputerPlayback) {
+    return;
+  }
   const before = captureActionState();
   action();
+  const shouldResolveComputer =
+    options.resolveComputer && state.game.turn === "computer" && !state.game.gameOver;
+  if (shouldResolveComputer) {
+    state.isComputerPlayback = true;
+  }
   render();
   playActionAnimations(before);
+  if (shouldResolveComputer) {
+    await playComputerTurnsAnimated({ lockAlreadyHeld: true });
+  }
 }
 
 function effectPills(player, perspective) {
@@ -500,6 +523,14 @@ function renderActions() {
   const game = state.game;
   elements.actionButtons.innerHTML = "";
 
+  if (state.isComputerPlayback) {
+    elements.actionState.textContent = "电脑行动中";
+    const observingButton = makeButton("▶", "观察中", "电脑正在逐步行动", () => {}, "primary");
+    observingButton.disabled = true;
+    elements.actionButtons.append(observingButton);
+    return;
+  }
+
   if (game.gameOver) {
     elements.actionState.textContent = `${game.winner}获胜`;
     elements.actionButtons.append(
@@ -514,7 +545,7 @@ function renderActions() {
     elements.actionState.textContent = "电脑回合";
     elements.actionButtons.append(
       makeButton("▶", "执行电脑行动", "继续执行电脑行动", () => {
-        runAnimatedAction(() => game.resolveComputerUntilPlayer());
+        playComputerTurnsAnimated();
       }, "primary"),
     );
     return;
@@ -526,8 +557,7 @@ function renderActions() {
       makeButton("⏭", "跳过回合", "跳过被冻结的回合", () => {
         runAnimatedAction(() => {
           game.playerSkipFrozenTurn();
-          game.resolveComputerUntilPlayer();
-        });
+        }, { resolveComputer: true });
       }, "primary"),
     );
     return;
@@ -538,14 +568,12 @@ function renderActions() {
     makeButton("◆", "对电脑出牌", "对电脑出牌", () => {
       runAnimatedAction(() => {
         game.playerPlayToComputer();
-        game.resolveComputerUntilPlayer();
-      });
+      }, { resolveComputer: true });
     }, "primary"),
     makeButton("◇", "对己方出牌", "对己方出牌", () => {
       runAnimatedAction(() => {
         game.playerPlayToSelf();
-        game.resolveComputerUntilPlayer();
-      });
+      }, { resolveComputer: true });
     }),
   );
 
@@ -589,6 +617,7 @@ function renderPlayerSkills() {
         </span>
         <span class="skill-index">${index + 1}</span>
       `;
+      button.disabled = state.isComputerPlayback;
       button.addEventListener("click", () => {
         state.selectedSkillIndex = index;
         render();
@@ -598,7 +627,7 @@ function renderPlayerSkills() {
   }
 
   const selectedSkill = game.player.skills[state.selectedSkillIndex] ?? null;
-  const canAct = !game.gameOver && game.turn === "player" && !game.player.skipTurn;
+  const canAct = !state.isComputerPlayback && !game.gameOver && game.turn === "player" && !game.player.skipTurn;
   const needsTakeTarget = selectedSkill === Skill.TAKE;
   const canTake = needsTakeTarget && game.computer.skills.length > 0;
 
@@ -634,6 +663,7 @@ function renderDifficultySelect() {
     .map((difficulty) => `<option value="${difficulty}">${escapeHtml(DIFFICULTY_NAMES[difficulty])}</option>`)
     .join("");
   elements.difficultySelect.value = state.game.computerDifficulty;
+  elements.difficultySelect.disabled = state.isComputerPlayback;
 }
 
 function renderLogs() {
@@ -675,6 +705,7 @@ function renderWinStreak() {
 function render() {
   const game = state.game;
   syncWinStreak();
+  elements.resetButton.disabled = state.isComputerPlayback;
   elements.computerPanel.innerHTML = renderDuelist(game.computer, "智能电脑");
   elements.playerPanel.innerHTML = renderDuelist(game.player, "玩家");
 
@@ -710,7 +741,10 @@ function restartGamePreservingSettings() {
 }
 
 function bindEvents() {
-  $("#resetButton").addEventListener("click", () => {
+  elements.resetButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
     restartGamePreservingSettings();
     render();
   });
@@ -732,11 +766,14 @@ function bindEvents() {
       const selectedSkill = state.game.player.skills[state.selectedSkillIndex] ?? null;
       const takeTargetIndex = selectedSkill === Skill.TAKE ? Number(elements.takeTargetSelect.value) : null;
       state.game.playerUseSkillByIndex(state.selectedSkillIndex, Number.isNaN(takeTargetIndex) ? null : takeTargetIndex);
-      state.game.resolveComputerUntilPlayer();
-    });
+    }, { resolveComputer: true });
   });
 
   elements.difficultySelect.addEventListener("change", () => {
+    if (state.isComputerPlayback) {
+      render();
+      return;
+    }
     state.game.computerDifficulty = elements.difficultySelect.value;
     state.game.log(`电脑难度切换为：${DIFFICULTY_NAMES[state.game.computerDifficulty]}`);
     render();
