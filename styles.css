@@ -281,6 +281,11 @@ h3 {
   gap: 12px;
 }
 
+.duelist-primary {
+  display: grid;
+  gap: 10px;
+}
+
 .duelist-name {
   margin: 0;
   font-size: 1.18rem;

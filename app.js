@@ -19,8 +19,8 @@ const MAX_PERSISTED_JSON_CHARS = 24_000;
 const MAX_WIN_STREAK = 9_999;
 const MAX_LEARNING_TICK = 1_000_000;
 const ANIMATION_DURATION_MS = 760;
-const COMPUTER_ACTION_DELAY_MS = 260;
-const COMPUTER_ACTION_OBSERVE_MS = 260;
+const COMPUTER_ACTION_DELAY_MS = 360;
+const COMPUTER_ACTION_OBSERVE_MS = 360;
 const COMPUTER_ACTION_MAX_STEPS = 32;
 const VALID_DIFFICULTIES = new Set(Object.values(ComputerDifficulty));
 const VALID_SKILLS = new Set(Object.values(Skill));
@@ -463,7 +463,7 @@ function renderDuelist(player, roleText) {
     : `<span class="pill pill-muted">无特殊状态</span>`;
 
   return `
-    <div>
+    <div class="duelist-primary">
       <div class="duelist-head">
         <div>
           <h2 class="duelist-name">${escapeHtml(player.name)}</h2>
@@ -474,13 +474,13 @@ function renderDuelist(player, roleText) {
       <div class="health-track" aria-label="${escapeHtml(player.name)}血量">
         <span class="health-fill" style="width:${hpRatio}%"></span>
       </div>
+      <div class="effects">${effectHtml}</div>
     </div>
     <div class="stats-row">
       <div class="stat"><span>持有技能</span><strong>${player.skills.length}/${state.game.maxSkills}</strong></div>
       <div class="stat"><span>黑卡伤害</span><strong>${state.game.predictedBlackDamage(player)}</strong></div>
       <div class="stat"><span>回合状态</span><strong>${state.game.turn === player.key ? "行动中" : "等待"}</strong></div>
     </div>
-    <div class="effects">${effectHtml}</div>
   `;
 }
 
