@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="黑卡 / 白卡概率博弈网页游戏" />
     <title>卡牌轮盘</title>
-    <link rel="stylesheet" href="./styles.css?v=20260610-save-clear" />
+    <link rel="stylesheet" href="./styles.css?v=20260612-seeded-mode" />
   </head>
   <body>
     <div class="app-shell">
@@ -19,6 +19,14 @@
             <span>连胜</span>
             <strong id="winStreakCount">0</strong>
           </div>
+          <label class="seed-control" title="输入种子后重开；留空则恢复随机开局">
+            <span>种子</span>
+            <input id="seedInput" type="text" maxlength="96" autocomplete="off" placeholder="随机" />
+          </label>
+          <button class="icon-button" id="seedRestartButton" type="button" title="使用当前种子重新开始">
+            <span aria-hidden="true">#</span>
+            <span>应用</span>
+          </button>
           <button class="icon-button" id="rulesButton" type="button" title="查看规则">
             <span aria-hidden="true">?</span>
             <span>规则</span>
@@ -123,6 +131,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./app.js?v=20260610-save-clear"></script>
+    <script type="module" src="./app.js?v=20260612-seeded-mode"></script>
   </body>
 </html>

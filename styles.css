@@ -45,7 +45,8 @@ body {
 }
 
 button,
-select {
+select,
+input {
   font: inherit;
 }
 
@@ -68,17 +69,20 @@ button:hover:not(:disabled) {
 }
 
 button:focus-visible,
-select:focus-visible {
+select:focus-visible,
+input:focus-visible {
   outline: none;
   box-shadow: var(--focus);
 }
 
-button:disabled {
+button:disabled,
+input:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
 
-select {
+select,
+input {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -86,6 +90,10 @@ select {
   color: var(--text);
   background: #151815;
   padding: 0 12px;
+}
+
+input::placeholder {
+  color: rgba(183, 192, 173, 0.68);
 }
 
 .app-shell {
@@ -178,6 +186,20 @@ h3 {
   padding: 0 12px;
   background: rgba(215, 180, 90, 0.1);
   white-space: nowrap;
+}
+
+.seed-control {
+  display: grid;
+  grid-template-columns: auto minmax(118px, 160px);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.seed-control input {
+  min-width: 0;
 }
 
 .streak-badge span {
@@ -866,8 +888,13 @@ h3 {
   }
 
   .topbar-actions button,
-  .streak-badge {
+  .streak-badge,
+  .seed-control {
     flex: 1 1 130px;
+  }
+
+  .seed-control {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .arena,

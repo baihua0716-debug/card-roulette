@@ -28,6 +28,7 @@ function freshGame({
   game.redealtThisTurn = false;
   game.computerSkillUsesThisTurn = 0;
   game.computerTurnAnnounced = false;
+  game.lastComputerActionStepKind = null;
   game.logs = [];
   return game;
 }
@@ -68,6 +69,15 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   assert.equal(game.computer.maxHp, 6);
   assert.equal(game.deck.length, 8);
   assert.equal(game.computerDifficulty, ComputerDifficulty.MEDIUM);
+}
+
+{
+  const gameA = new CardGame({ seed: "test-seed" });
+  const gameB = new CardGame({ seed: "test-seed" });
+  assert.equal(gameA.seed, "test-seed");
+  assert.deepEqual(gameA.deck, gameB.deck);
+  assert.deepEqual(gameA.player.skills, gameB.player.skills);
+  assert.deepEqual(gameA.computer.skills, gameB.computer.skills);
 }
 
 {
@@ -132,6 +142,15 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   assert.equal(game.turn, "player");
   assert.equal(game.computerSkillUsesThisTurn, 0);
   assert.equal(game.computerTurnAnnounced, false);
+}
+
+{
+  const game = freshGame({ deck: [Card.BLACK, Card.WHITE], computerSkills: [Skill.DETECT] });
+  game.turn = "computer";
+  game.computerTurnOnce();
+  assert.deepEqual(game.deck, [Card.WHITE]);
+  assert.equal(game.turn, "player");
+  assert.equal(game.lastComputerActionStepKind, "play");
 }
 
 {

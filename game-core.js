@@ -1,3 +1,13 @@
+import {
+  createRandomSource,
+  normalizeSeed,
+  randint as randomInt,
+  choice as randomChoice,
+  weightedChoice as randomWeightedChoice,
+  shuffle as randomShuffle,
+} from "./game-random.js";
+import { Player } from "./player.js";
+
 const Card = Object.freeze({
   BLACK: "black",
   WHITE: "white",
@@ -100,35 +110,6 @@ const AI_SKILL_PRIORITY = Object.freeze([
 
 const HARD_SKILL_COMBO_MEMORY_LIMIT = 96;
 
-function randint(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function choice(items) {
-  return items[randint(0, items.length - 1)];
-}
-
-function weightedChoice(weightMap) {
-  const entries = Object.entries(weightMap);
-  const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
-  let roll = Math.random() * totalWeight;
-  for (const [item, weight] of entries) {
-    roll -= weight;
-    if (roll < 0) {
-      return item;
-    }
-  }
-  return entries[entries.length - 1][0];
-}
-
-function shuffle(items) {
-  for (let i = items.length - 1; i > 0; i -= 1) {
-    const j = randint(0, i);
-    [items[i], items[j]] = [items[j], items[i]];
-  }
-  return items;
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -159,35 +140,10 @@ function removeFirst(items, value) {
   return false;
 }
 
-class Player {
-  constructor(name, key) {
-    this.name = name;
-    this.key = key;
-    this.hp = 6;
-    this.maxHp = 6;
-    this.skills = [];
-    this.amplifyActive = false;
-    this.overclockActive = false;
-    this.skipTurn = false;
-  }
-
-  isAlive() {
-    return this.hp > 0;
-  }
-
-  heal(amount) {
-    const oldHp = this.hp;
-    this.hp = Math.min(this.maxHp, this.hp + amount);
-    return this.hp - oldHp;
-  }
-
-  loseHp(amount) {
-    this.hp -= amount;
-  }
-}
-
 class CardGame {
-  constructor() {
+  constructor(options = {}) {
+    this.randomSource = createRandomSource(options);
+    this.seed = this.randomSource.seed;
     this.player = new Player("你", "player");
     this.computer = new Player("电脑", "computer");
     this.deck = [];
@@ -207,8 +163,29 @@ class CardGame {
     this.hardSkillLearningTick = 0;
     this.computerSkillUsesThisTurn = 0;
     this.computerTurnAnnounced = false;
+    this.lastComputerActionStepKind = null;
     this.silent = false;
     this.newRoundDeck();
+  }
+
+  random() {
+    return this.randomSource.next();
+  }
+
+  randint(min, max) {
+    return randomInt(() => this.random(), min, max);
+  }
+
+  choice(items) {
+    return randomChoice(() => this.random(), items);
+  }
+
+  weightedChoice(weightMap) {
+    return randomWeightedChoice(() => this.random(), weightMap);
+  }
+
+  shuffle(items) {
+    return randomShuffle(() => this.random(), items);
   }
 
   log(message) {
@@ -223,10 +200,10 @@ class CardGame {
 
   newRoundDeck() {
     const total = 8;
-    const blackCount = randint(1, total - 1);
+    const blackCount = this.randint(1, total - 1);
     const whiteCount = total - blackCount;
 
-    this.deck = shuffle([
+    this.deck = this.shuffle([
       ...Array.from({ length: blackCount }, () => Card.BLACK),
       ...Array.from({ length: whiteCount }, () => Card.WHITE),
     ]);
@@ -238,6 +215,7 @@ class CardGame {
     this.redealtThisTurn = true;
     this.computerSkillUsesThisTurn = 0;
     this.computerTurnAnnounced = false;
+    this.lastComputerActionStepKind = null;
 
     this.log("—— 新一轮牌序已生成 ——");
     this.log(`本轮共有 ${total} 张牌：${blackCount} 张黑卡，${whiteCount} 张白卡。`);
@@ -270,7 +248,7 @@ class CardGame {
     }
 
     const actualCount = Math.min(count, freeSlots);
-    const newSkills = Array.from({ length: actualCount }, () => weightedChoice(SKILL_WEIGHTS));
+    const newSkills = Array.from({ length: actualCount }, () => this.weightedChoice(SKILL_WEIGHTS));
     actor.skills.push(...newSkills);
     this.log(`${actor.name}获得了 ${actualCount} 个技能：${formatSkillList(newSkills)}`);
   }
@@ -473,6 +451,7 @@ class CardGame {
   }
 
   computerActionStepOnce() {
+    this.lastComputerActionStepKind = null;
     if (this.turn !== "computer" || this.gameOver) {
       this.resetComputerActionStepState();
       return false;
@@ -489,12 +468,14 @@ class CardGame {
       this.turn = "player";
       this.log("电脑受到冻结影响，跳过了这个回合。");
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "skip";
       return true;
     }
 
     if (this.onlyWhiteCardsLeft()) {
       this.endRoundBecauseOnlyWhite(this.computer);
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "round";
       return true;
     }
 
@@ -508,6 +489,7 @@ class CardGame {
     if (this.redealtThisTurn && this.turn === "player") {
       this.redealtThisTurn = false;
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "round";
       return true;
     }
 
@@ -519,6 +501,7 @@ class CardGame {
     if (this.onlyWhiteCardsLeft()) {
       this.endRoundBecauseOnlyWhite(this.computer);
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "round";
       return true;
     }
 
@@ -528,14 +511,17 @@ class CardGame {
       if (this.redealtThisTurn && this.turn === "player") {
         this.redealtThisTurn = false;
         this.resetComputerActionStepState();
+        this.lastComputerActionStepKind = "round";
         return true;
       }
       if (this.checkWinner()) {
         this.resetComputerActionStepState();
+        this.lastComputerActionStepKind = "skill";
         return true;
       }
       if (used) {
         this.computerSkillUsesThisTurn += 1;
+        this.lastComputerActionStepKind = "skill";
         return true;
       }
     }
@@ -543,12 +529,14 @@ class CardGame {
     if (this.redealtThisTurn && this.turn === "player") {
       this.redealtThisTurn = false;
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "round";
       return true;
     }
 
     if (this.onlyWhiteCardsLeft()) {
       this.endRoundBecauseOnlyWhite(this.computer);
       this.resetComputerActionStepState();
+      this.lastComputerActionStepKind = "round";
       return true;
     }
 
@@ -559,89 +547,19 @@ class CardGame {
       this.applyPlayDecision("computer", target);
     }
     this.resetComputerActionStepState();
+    this.lastComputerActionStepKind = "play";
     return true;
   }
 
   computerTurnOnce() {
-    if (this.turn !== "computer" || this.gameOver) {
-      return;
-    }
-
-    this.log("—— 轮到电脑 ——");
-
-    if (this.computer.skipTurn) {
-      this.computer.skipTurn = false;
-      this.turn = "player";
-      this.log("电脑受到冻结影响，跳过了这个回合。");
-      return;
-    }
-
-    if (this.onlyWhiteCardsLeft()) {
-      this.endRoundBecauseOnlyWhite(this.computer);
-      return;
-    }
-
-    let skillUses = 0;
-    const maxSkillUses = this.computerDifficulty === ComputerDifficulty.EASY ? 1 : 7;
-    while (skillUses < maxSkillUses) {
-      if (this.checkWinner()) {
+    let steps = 0;
+    while (this.turn === "computer" && !this.gameOver && steps < 10) {
+      const advanced = this.computerActionStepOnce();
+      steps += 1;
+      if (!advanced || this.lastComputerActionStepKind !== "skill") {
         return;
       }
-      this.ensureDeck();
-
-      if (this.onlyWhiteCardsLeft()) {
-        this.endRoundBecauseOnlyWhite(this.computer);
-        return;
-      }
-
-      const used = this.computerTryUseSkill();
-      if (this.redealtThisTurn && this.turn === "player") {
-        this.redealtThisTurn = false;
-        return;
-      }
-      if (!used) {
-        break;
-      }
-      skillUses += 1;
     }
-
-    if (this.checkWinner()) {
-      return;
-    }
-
-    if (this.redealtThisTurn && this.turn === "player") {
-      this.redealtThisTurn = false;
-      return;
-    }
-
-    if (this.onlyWhiteCardsLeft()) {
-      this.endRoundBecauseOnlyWhite(this.computer);
-      return;
-    }
-
-    const target = this.computerChooseAction();
-    if (this.computerDifficulty === ComputerDifficulty.HARD) {
-      this.executeComputerAction({ type: "play", target });
-      return;
-    }
-
-    if (target === "opponent") {
-      this.playCard(this.computer, this.player);
-      if (!this.gameOver) {
-        this.turn = "player";
-      }
-    } else {
-      const result = this.playCard(this.computer, this.computer);
-      if (!this.gameOver) {
-        if (result === Card.WHITE) {
-          this.turn = "computer";
-          this.log("电脑对己方打出白卡，因此它继续行动。");
-        } else {
-          this.turn = "player";
-        }
-      }
-    }
-    this.afterCardOrSkill();
   }
 
   computerTryUseSkill() {
@@ -736,7 +654,7 @@ class CardGame {
 
   computerTryUseSkillEasy() {
     this.ensureDeck();
-    if (!this.computer.skills.length || Math.random() < 0.45) {
+    if (!this.computer.skills.length || this.random() < 0.45) {
       return false;
     }
 
@@ -749,7 +667,7 @@ class CardGame {
         candidates.push(skill);
       } else if (skill === Skill.RISK && this.computer.hp >= 2 && this.computer.hp <= this.computer.maxHp - 2) {
         candidates.push(skill);
-      } else if (skill === Skill.DETECT && known === null && Math.random() < 0.65) {
+      } else if (skill === Skill.DETECT && known === null && this.random() < 0.65) {
         candidates.push(skill);
       } else if (skill === Skill.SHUFFLE && known === null && this.computer.hp <= 3 && blackProb >= 0.45) {
         candidates.push(skill);
@@ -761,9 +679,9 @@ class CardGame {
         candidates.push(skill);
       } else if (skill === Skill.FREEZE && !this.player.skipTurn && this.dangerFromPlayerNextTurn() >= 28) {
         candidates.push(skill);
-      } else if (skill === Skill.OMEN && this.getUnknownFutureIndexes("computer").length > 0 && Math.random() < 0.25) {
+      } else if (skill === Skill.OMEN && this.getUnknownFutureIndexes("computer").length > 0 && this.random() < 0.25) {
         candidates.push(skill);
-      } else if (skill === Skill.TAKE && this.computerChooseTakeTarget() !== null && Math.random() < 0.35) {
+      } else if (skill === Skill.TAKE && this.computerChooseTakeTarget() !== null && this.random() < 0.35) {
         candidates.push(skill);
       }
     }
@@ -772,7 +690,7 @@ class CardGame {
       return false;
     }
 
-    const skill = choice(candidates);
+    const skill = this.choice(candidates);
     if (skill === Skill.TAKE) {
       const target = this.computerChooseTakeTarget();
       return target === null ? false : this.aiUseTake(target);
@@ -788,8 +706,8 @@ class CardGame {
     if (known === Card.WHITE) {
       return "self";
     }
-    if (Math.random() < 0.35) {
-      return choice(["opponent", "self"]);
+    if (this.random() < 0.35) {
+      return this.choice(["opponent", "self"]);
     }
     return this.blackProbability() >= 0.5 ? "opponent" : "self";
   }
@@ -1222,6 +1140,9 @@ class CardGame {
     clone.hardSkillLearningTick = this.hardSkillLearningTick;
     clone.computerSkillUsesThisTurn = this.computerSkillUsesThisTurn;
     clone.computerTurnAnnounced = this.computerTurnAnnounced;
+    clone.lastComputerActionStepKind = this.lastComputerActionStepKind;
+    clone.randomSource = this.randomSource.clone();
+    clone.seed = this.seed;
     clone.silent = true;
     return clone;
   }
@@ -1524,8 +1445,8 @@ class CardGame {
       return "self";
     }
     const blackProb = this.blackProbability();
-    if (Math.random() < 0.2) {
-      return choice(["opponent", "self"]);
+    if (this.random() < 0.2) {
+      return this.choice(["opponent", "self"]);
     }
     return blackProb >= 0.48 ? "opponent" : "self";
   }
@@ -1996,7 +1917,7 @@ class CardGame {
     const playerScore = this.scorePlayActionForComputer("opponent");
     const selfScore = this.scorePlayActionForComputer("self");
     if (Math.abs(playerScore - selfScore) <= 3) {
-      return choice(["opponent", "self"]);
+      return this.choice(["opponent", "self"]);
     }
     return playerScore > selfScore ? "opponent" : "self";
   }
@@ -2106,7 +2027,7 @@ class CardGame {
   }
 
   skillRisk(actor) {
-    if (Math.random() < 0.5) {
+    if (this.random() < 0.5) {
       const healed = actor.heal(2);
       this.log(`${actor.name} 涉险成功，回复了 ${healed} 点血量。当前血量：${actor.hp}/${actor.maxHp}`);
       return;
@@ -2129,7 +2050,7 @@ class CardGame {
 
   skillOmen(actor) {
     const unknownFutureIndexes = this.getUnknownFutureIndexes(actor.key);
-    const index = unknownFutureIndexes[randint(0, unknownFutureIndexes.length - 1)];
+    const index = unknownFutureIndexes[this.randint(0, unknownFutureIndexes.length - 1)];
     const card = this.deck[index];
     this.setKnownCard(actor.key, index, card);
     if (actor.key === "player") {
@@ -2250,4 +2171,5 @@ export {
   CardGame,
   clamp,
   displaySkill,
+  normalizeSeed,
 };

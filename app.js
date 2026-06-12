@@ -8,6 +8,7 @@ import {
   CardGame,
   clamp,
   displaySkill,
+  normalizeSeed,
 } from './game-core.js';
 
 const STORAGE_KEY = "cardRoulette:persistentState";
@@ -44,16 +45,20 @@ const state = {
   currentGameId: 0,
   scoredGameId: null,
   isComputerPlayback: false,
+  currentSeed: null,
 };
 
 let storageAvailable = null;
 let pendingPersistTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
 const elements = {
   resetButton: $("#resetButton"),
   clearSaveButton: $("#clearSaveButton"),
+  seedInput: $("#seedInput"),
+  seedRestartButton: $("#seedRestartButton"),
   computerPanel: $("#computerPanel"),
   playerPanel: $("#playerPanel"),
   turnBanner: $("#turnBanner"),
@@ -730,6 +735,8 @@ function render() {
   syncWinStreak();
   elements.resetButton.disabled = state.isComputerPlayback;
   elements.clearSaveButton.disabled = state.isComputerPlayback;
+  elements.seedInput.disabled = state.isComputerPlayback;
+  elements.seedRestartButton.disabled = state.isComputerPlayback;
   elements.computerPanel.innerHTML = renderDuelist(game.computer, "智能电脑");
   elements.playerPanel.innerHTML = renderDuelist(game.player, "玩家");
 
@@ -749,11 +756,13 @@ function render() {
   schedulePersistentStateSave();
 }
 
-function restartGamePreservingSettings() {
+function restartGamePreservingSettings(options = {}) {
   const difficulty = state.game.computerDifficulty;
   const hardSkillComboMemory = state.game.hardSkillComboMemory;
   const hardSkillLearningTick = state.game.hardSkillLearningTick;
-  state.game = new CardGame();
+  const seed = hasOwn(options, "seed") ? normalizeSeed(options.seed) : state.currentSeed;
+  state.currentSeed = seed;
+  state.game = new CardGame({ seed });
   state.game.computerDifficulty = difficulty;
   if (hardSkillComboMemory instanceof Map) {
     state.game.hardSkillComboMemory = new Map(hardSkillComboMemory);
@@ -762,6 +771,19 @@ function restartGamePreservingSettings() {
   state.selectedSkillIndex = 0;
   state.currentGameId += 1;
   state.scoredGameId = null;
+  if (seed) {
+    state.game.log(`已使用种子开局：${seed}`);
+  } else if (hasOwn(options, "seed")) {
+    state.game.log("已恢复随机开局。");
+  }
+}
+
+function restartFromSeedInput() {
+  const seed = normalizeSeed(elements.seedInput.value);
+  if (seed !== elements.seedInput.value.trim()) {
+    elements.seedInput.value = seed ?? "";
+  }
+  restartGamePreservingSettings({ seed });
 }
 
 function bindEvents() {
@@ -781,6 +803,22 @@ function bindEvents() {
       return;
     }
     clearPersistentState();
+    render();
+  });
+
+  elements.seedRestartButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
+    restartFromSeedInput();
+    render();
+  });
+
+  elements.seedInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || state.isComputerPlayback) {
+      return;
+    }
+    restartFromSeedInput();
     render();
   });
 
