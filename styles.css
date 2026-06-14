@@ -564,6 +564,66 @@ h3 {
   flex: 1 1 150px;
 }
 
+.save-section,
+.save-slots,
+.save-slot-summary {
+  display: grid;
+}
+
+.save-section {
+  gap: 10px;
+}
+
+.save-slots {
+  gap: 8px;
+}
+
+.save-slot {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.save-slot.is-empty {
+  border-style: dashed;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.save-slot-summary {
+  gap: 2px;
+  min-width: 0;
+}
+
+.save-slot-summary strong {
+  font-size: 0.92rem;
+}
+
+.save-slot-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.save-slot-actions,
+.save-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.save-slot-actions .small-button {
+  min-height: 32px;
+  flex: 1 1 58px;
+  padding: 0 8px;
+}
+
+.save-tools .small-button {
+  flex: 1 1 120px;
+}
+
 .skill-list,
 .opponent-skills {
   display: grid;

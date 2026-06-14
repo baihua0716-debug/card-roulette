@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="黑卡 / 白卡概率博弈网页游戏" />
     <title>卡牌轮盘</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-seeded-mode" />
+    <link rel="stylesheet" href="./styles.css?v=20260614-save-slots" />
   </head>
   <body>
     <div class="app-shell">
@@ -73,6 +73,25 @@
             </label>
           </section>
 
+          <section class="save-section">
+            <div class="section-heading">
+              <h2>存档</h2>
+              <span>本机 / 文件</span>
+            </div>
+            <div class="save-slots" id="saveSlots"></div>
+            <div class="save-tools">
+              <button class="small-button" id="exportSaveButton" type="button" title="导出当前对局存档 JSON">
+                <span aria-hidden="true">⇩</span>
+                <span>导出</span>
+              </button>
+              <button class="small-button" id="importSaveButton" type="button" title="导入 JSON 存档文件">
+                <span aria-hidden="true">⇧</span>
+                <span>导入</span>
+              </button>
+              <input class="hidden" id="importSaveInput" type="file" accept="application/json,.json" />
+            </div>
+          </section>
+
           <section class="skill-section">
             <div class="section-heading">
               <h2>你的技能</h2>
@@ -131,6 +150,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./app.js?v=20260612-seeded-mode"></script>
+    <script type="module" src="./app.js?v=20260614-save-slots"></script>
   </body>
 </html>

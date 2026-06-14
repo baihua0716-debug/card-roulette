@@ -109,9 +109,23 @@ const AI_SKILL_PRIORITY = Object.freeze([
 ]);
 
 const HARD_SKILL_COMBO_MEMORY_LIMIT = 96;
+const GAME_SAVE_VERSION = 1;
+const MAX_SAVE_LOGS = 160;
+const VALID_CARDS = new Set(Object.values(Card));
+const VALID_SKILLS = new Set(Object.values(Skill));
+const VALID_TURNS = new Set(["player", "computer"]);
+const VALID_ACTION_STEP_KINDS = new Set(["skill", "play", "skip", "round"]);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampInteger(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.trunc(clamp(number, min, max));
 }
 
 function unique(items) {
@@ -138,6 +152,113 @@ function removeFirst(items, value) {
     return true;
   }
   return false;
+}
+
+function normalizeCardList(cards, limit = 64) {
+  if (!Array.isArray(cards)) {
+    return [];
+  }
+  return cards.filter((card) => VALID_CARDS.has(card)).slice(0, limit);
+}
+
+function normalizeSkillList(skills, limit) {
+  if (!Array.isArray(skills)) {
+    return [];
+  }
+  return skills.filter((skill) => VALID_SKILLS.has(skill)).slice(0, limit);
+}
+
+function normalizeKnownPositions(rawPositions, deckLength) {
+  const positions = {};
+  if (!rawPositions || typeof rawPositions !== "object") {
+    return positions;
+  }
+  for (const [rawIndex, card] of Object.entries(rawPositions)) {
+    const index = Number(rawIndex);
+    if (Number.isInteger(index) && index >= 0 && index < deckLength && VALID_CARDS.has(card)) {
+      positions[index] = card;
+    }
+  }
+  return positions;
+}
+
+function normalizeWinner(winner) {
+  return typeof winner === "string" && winner.length <= 32 ? winner : null;
+}
+
+function normalizeLogList(logs) {
+  if (!Array.isArray(logs)) {
+    return [];
+  }
+  return logs
+    .filter((log) => typeof log === "string")
+    .map((log) => log.slice(0, 240))
+    .slice(-MAX_SAVE_LOGS);
+}
+
+function normalizeComboKeyForSave(key) {
+  if (typeof key !== "string" || key.length > 96) {
+    return null;
+  }
+  const skills = key.split("+");
+  if (!skills.length || skills.length > 3) {
+    return null;
+  }
+  if (skills.some((skill) => !VALID_SKILLS.has(skill)) || new Set(skills).size !== skills.length) {
+    return null;
+  }
+  return skills
+    .sort((a, b) => {
+      const rankDiff = skillPriority(a) - skillPriority(b);
+      return rankDiff !== 0 ? rankDiff : a.localeCompare(b);
+    })
+    .join("+");
+}
+
+function normalizeHardSkillComboMemory(rawMemory) {
+  const rawEntries = Array.isArray(rawMemory)
+    ? rawMemory
+    : rawMemory && typeof rawMemory === "object" && Array.isArray(rawMemory.entries)
+      ? rawMemory.entries
+      : [];
+  const normalized = new Map();
+
+  for (const rawEntry of rawEntries) {
+    let key;
+    let value;
+    if (Array.isArray(rawEntry)) {
+      [key, value] = rawEntry;
+    } else if (rawEntry && typeof rawEntry === "object") {
+      key = rawEntry.key;
+      value = rawEntry;
+    }
+
+    const normalizedKey = normalizeComboKeyForSave(key);
+    if (!normalizedKey || !value || typeof value !== "object") {
+      continue;
+    }
+
+    const score = Number(value.score);
+    if (!Number.isFinite(score)) {
+      continue;
+    }
+
+    normalized.set(normalizedKey, {
+      score: clamp(score, -18, 18),
+      samples: clampInteger(value.samples, 0, 99, 0),
+      lastSeen: clampInteger(value.lastSeen, 0, 1_000_000, 0),
+    });
+  }
+
+  return new Map(
+    [...normalized.entries()]
+      .sort((a, b) => {
+        const importanceA = Math.abs(a[1].score) + a[1].samples * 0.08 + a[1].lastSeen * 0.002;
+        const importanceB = Math.abs(b[1].score) + b[1].samples * 0.08 + b[1].lastSeen * 0.002;
+        return importanceB - importanceA;
+      })
+      .slice(0, HARD_SKILL_COMBO_MEMORY_LIMIT),
+  );
 }
 
 class CardGame {
@@ -1145,6 +1266,104 @@ class CardGame {
     clone.seed = this.seed;
     clone.silent = true;
     return clone;
+  }
+
+  toSaveData() {
+    return {
+      version: GAME_SAVE_VERSION,
+      randomState: typeof this.randomSource.snapshot === "function" ? this.randomSource.snapshot() : { mode: "random" },
+      seed: this.seed ?? null,
+      player: this.serializePlayer(this.player),
+      computer: this.serializePlayer(this.computer),
+      deck: [...this.deck],
+      turn: this.turn,
+      knownPositions: {
+        player: { ...this.knownPositions.player },
+        computer: { ...this.knownPositions.computer },
+      },
+      maxSkills: this.maxSkills,
+      skillsPerRound: this.skillsPerRound,
+      redealtThisTurn: this.redealtThisTurn,
+      gameOver: this.gameOver,
+      winner: this.winner,
+      logs: this.logs.slice(-MAX_SAVE_LOGS),
+      computerDifficulty: this.computerDifficulty,
+      hardSkillComboMemory: this.hardSkillComboMemory instanceof Map ? [...this.hardSkillComboMemory.entries()] : [],
+      hardSkillLearningTick: this.hardSkillLearningTick,
+      computerSkillUsesThisTurn: this.computerSkillUsesThisTurn,
+      computerTurnAnnounced: this.computerTurnAnnounced,
+      lastComputerActionStepKind: this.lastComputerActionStepKind,
+    };
+  }
+
+  serializePlayer(player) {
+    return {
+      hp: player.hp,
+      maxHp: player.maxHp,
+      skills: [...player.skills],
+      amplifyActive: player.amplifyActive,
+      overclockActive: player.overclockActive,
+      skipTurn: player.skipTurn,
+    };
+  }
+
+  static fromSaveData(payload = {}) {
+    const source = payload && typeof payload === "object" && payload.game && typeof payload.game === "object"
+      ? payload.game
+      : payload && typeof payload === "object"
+        ? payload
+        : {};
+    const game = Object.create(CardGame.prototype);
+    const maxSkills = clampInteger(source.maxSkills, 1, 20, 8);
+    const comboMemory = normalizeHardSkillComboMemory(source.hardSkillComboMemory ?? source.skillComboMemory);
+    const maxLastSeen = [...comboMemory.values()].reduce((max, entry) => Math.max(max, entry.lastSeen), 0);
+
+    game.randomSource = createRandomSource({
+      snapshot: source.randomState ?? source.randomSource ?? null,
+      seed: source.seed ?? null,
+    });
+    game.seed = game.randomSource.seed;
+    game.maxSkills = maxSkills;
+    game.skillsPerRound = clampInteger(source.skillsPerRound, 0, maxSkills, Math.min(4, maxSkills));
+    game.player = CardGame.restorePlayer(source.player, "玩家", "player", maxSkills);
+    game.computer = CardGame.restorePlayer(source.computer, "电脑", "computer", maxSkills);
+    game.deck = normalizeCardList(source.deck);
+    game.turn = VALID_TURNS.has(source.turn) ? source.turn : "player";
+    game.knownPositions = {
+      player: normalizeKnownPositions(source.knownPositions?.player, game.deck.length),
+      computer: normalizeKnownPositions(source.knownPositions?.computer, game.deck.length),
+    };
+    game.redealtThisTurn = Boolean(source.redealtThisTurn);
+    game.gameOver = Boolean(source.gameOver);
+    game.winner = game.gameOver ? normalizeWinner(source.winner) : null;
+    game.logs = normalizeLogList(source.logs);
+    game.computerDifficulty = Object.values(ComputerDifficulty).includes(source.computerDifficulty)
+      ? source.computerDifficulty
+      : ComputerDifficulty.MEDIUM;
+    game.hardSkillComboMemory = comboMemory;
+    game.hardSkillLearningTick = Math.max(
+      clampInteger(source.hardSkillLearningTick, 0, 1_000_000, maxLastSeen),
+      maxLastSeen,
+    );
+    game.computerSkillUsesThisTurn = clampInteger(source.computerSkillUsesThisTurn, 0, 20, 0);
+    game.computerTurnAnnounced = Boolean(source.computerTurnAnnounced);
+    game.lastComputerActionStepKind = VALID_ACTION_STEP_KINDS.has(source.lastComputerActionStepKind)
+      ? source.lastComputerActionStepKind
+      : null;
+    game.silent = false;
+    return game;
+  }
+
+  static restorePlayer(rawPlayer, fallbackName, key, maxSkills) {
+    const raw = rawPlayer && typeof rawPlayer === "object" ? rawPlayer : {};
+    const player = new Player(fallbackName, key);
+    player.maxHp = clampInteger(raw.maxHp, 1, 20, 6);
+    player.hp = clampInteger(raw.hp, 0, player.maxHp, player.maxHp);
+    player.skills = normalizeSkillList(raw.skills, maxSkills);
+    player.amplifyActive = Boolean(raw.amplifyActive);
+    player.overclockActive = Boolean(raw.overclockActive);
+    player.skipTurn = Boolean(raw.skipTurn);
+    return player;
   }
 
   clonePlayer(player) {

@@ -81,6 +81,66 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
 }
 
 {
+  const game = new CardGame({ seed: "save-slot-seed" });
+  game.deck = [Card.BLACK, Card.WHITE, Card.BLACK, Card.WHITE];
+  game.turn = "computer";
+  game.player.hp = 4;
+  game.computer.hp = 5;
+  game.player.skills = [Skill.DETECT, Skill.OMEN];
+  game.computer.skills = [Skill.CONVERT, Skill.HEAL];
+  game.player.amplifyActive = true;
+  game.computer.skipTurn = true;
+  game.setKnownCard("player", 0, Card.BLACK);
+  game.setKnownCard("computer", 2, Card.BLACK);
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  game.hardSkillLearningTick = 12;
+  game.hardSkillComboMemory.set(game.hardSkillComboKey([Skill.CONVERT, Skill.HEAL]), {
+    score: 3.5,
+    samples: 2,
+    lastSeen: 12,
+  });
+  game.computerSkillUsesThisTurn = 2;
+  game.computerTurnAnnounced = true;
+  game.lastComputerActionStepKind = "skill";
+  game.logs = ["saved state"];
+
+  const restored = CardGame.fromSaveData(game.toSaveData());
+  assert.deepEqual(restored.deck, game.deck);
+  assert.equal(restored.turn, game.turn);
+  assert.equal(restored.player.hp, game.player.hp);
+  assert.equal(restored.computer.hp, game.computer.hp);
+  assert.deepEqual(restored.player.skills, game.player.skills);
+  assert.deepEqual(restored.computer.skills, game.computer.skills);
+  assert.equal(restored.player.amplifyActive, true);
+  assert.equal(restored.computer.skipTurn, true);
+  assert.equal(restored.getKnownCard("player", 0), Card.BLACK);
+  assert.equal(restored.getKnownCard("computer", 2), Card.BLACK);
+  assert.equal(restored.computerDifficulty, ComputerDifficulty.HARD);
+  assert.equal(restored.hardSkillLearningTick, 12);
+  assert.deepEqual([...restored.hardSkillComboMemory.entries()], [...game.hardSkillComboMemory.entries()]);
+  assert.equal(restored.computerSkillUsesThisTurn, 2);
+  assert.equal(restored.computerTurnAnnounced, true);
+  assert.equal(restored.lastComputerActionStepKind, "skill");
+  assert.deepEqual(restored.logs, ["saved state"]);
+  assert.equal(restored.random(), game.random());
+}
+
+{
+  const game = new CardGame({ seed: "restore-action-seed" });
+  game.deck = [Card.WHITE, Card.BLACK];
+  game.turn = "player";
+  game.player.skills = [];
+  game.computer.skills = [];
+  game.logs = [];
+
+  const restored = CardGame.fromSaveData(game.toSaveData());
+  assert.equal(restored.playerPlayToSelf(), game.playerPlayToSelf());
+  assert.deepEqual(restored.deck, game.deck);
+  assert.equal(restored.turn, game.turn);
+  assert.equal(restored.player.hp, game.player.hp);
+}
+
+{
   const game = freshGame({ deck: [Card.BLACK, Card.WHITE] });
   game.player.amplifyActive = true;
   game.playerPlayToComputer();

@@ -31,9 +31,14 @@ function nextMulberry32(state) {
   };
 }
 
+function normalizeRandomState(state) {
+  const number = Number(state);
+  return Number.isFinite(number) ? number >>> 0 : null;
+}
+
 function createSeededRandomSource(seed, initialState = null) {
   const normalizedSeed = normalizeSeed(seed) ?? "";
-  let state = initialState ?? hashSeed(normalizedSeed);
+  let state = normalizeRandomState(initialState) ?? hashSeed(normalizedSeed);
   return {
     seed: normalizedSeed,
     next() {
@@ -44,10 +49,26 @@ function createSeededRandomSource(seed, initialState = null) {
     clone() {
       return createSeededRandomSource(normalizedSeed, state);
     },
+    snapshot() {
+      return {
+        mode: "seeded",
+        seed: normalizedSeed,
+        state,
+      };
+    },
   };
 }
 
-function createRandomSource({ seed = null, rng = null } = {}) {
+function createRandomSource({ seed = null, rng = null, snapshot = null } = {}) {
+  if (snapshot && typeof snapshot === "object") {
+    if (snapshot.mode === "seeded" || typeof snapshot.seed === "string") {
+      const snapshotSeed = snapshot.seed === "" ? "" : normalizeSeed(snapshot.seed);
+      if (snapshotSeed !== null) {
+        return createSeededRandomSource(snapshotSeed, snapshot.state);
+      }
+    }
+  }
+
   const normalizedSeed = normalizeSeed(seed);
   if (normalizedSeed !== null) {
     return createSeededRandomSource(normalizedSeed);
@@ -57,12 +78,14 @@ function createRandomSource({ seed = null, rng = null } = {}) {
       seed: null,
       next: rng,
       clone: () => createRandomSource({ rng }),
+      snapshot: () => ({ mode: "external" }),
     };
   }
   return {
     seed: null,
     next: () => Math.random(),
     clone: () => createRandomSource(),
+    snapshot: () => ({ mode: "random" }),
   };
 }
 

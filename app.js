@@ -12,11 +12,17 @@ import {
 } from './game-core.js';
 
 const STORAGE_KEY = "cardRoulette:persistentState";
+const APP_VERSION = "20260614-save-slots";
 const STORAGE_VERSION = 1;
+const SAVE_SLOTS_KEY = "cardRoulette:saveSlots";
+const SAVE_SLOT_VERSION = 1;
+const SAVE_SLOT_COUNT = 3;
 const STORAGE_SAVE_DELAY_MS = 120;
 const STORAGE_OPERATION_BUDGET_MS = 6;
 const MAX_PERSISTED_COMBO_ENTRIES = 96;
 const MAX_PERSISTED_JSON_CHARS = 24_000;
+const MAX_SAVE_SLOTS_JSON_CHARS = 180_000;
+const MAX_IMPORT_JSON_CHARS = 220_000;
 const MAX_WIN_STREAK = 9_999;
 const MAX_LEARNING_TICK = 1_000_000;
 const ANIMATION_DURATION_MS = 760;
@@ -46,6 +52,7 @@ const state = {
   scoredGameId: null,
   isComputerPlayback: false,
   currentSeed: null,
+  saveSlots: Array.from({ length: SAVE_SLOT_COUNT }, () => null),
 };
 
 let storageAvailable = null;
@@ -57,6 +64,10 @@ const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key
 const elements = {
   resetButton: $("#resetButton"),
   clearSaveButton: $("#clearSaveButton"),
+  saveSlots: $("#saveSlots"),
+  exportSaveButton: $("#exportSaveButton"),
+  importSaveButton: $("#importSaveButton"),
+  importSaveInput: $("#importSaveInput"),
   seedInput: $("#seedInput"),
   seedRestartButton: $("#seedRestartButton"),
   computerPanel: $("#computerPanel"),
@@ -267,17 +278,19 @@ function clearPersistentState() {
   if (storageIsAvailable()) {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(SAVE_SLOTS_KEY);
     } catch {
       storageAvailable = false;
     }
   }
 
+  state.saveSlots = Array.from({ length: SAVE_SLOT_COUNT }, () => null);
   state.winStreak = 0;
   state.scoredGameId = state.game.gameOver ? state.currentGameId : null;
   state.game.computerDifficulty = ComputerDifficulty.MEDIUM;
   state.game.hardSkillComboMemory = new Map();
   state.game.hardSkillLearningTick = 0;
-  state.game.log("已清除本机缓存存档：连胜、难度和困难 AI 学习记忆已重置。");
+  state.game.log("已清除本机缓存存档：连胜、难度、困难 AI 学习记忆和存档栏已重置。");
 }
 
 function loadPersistentState() {
@@ -319,6 +332,226 @@ function loadPersistentState() {
     } catch {
       storageAvailable = false;
     }
+  }
+}
+
+function normalizeSaveEnvelope(payload) {
+  const source = payload && typeof payload === "object" ? payload : null;
+  if (!source) {
+    return null;
+  }
+
+  const gamePayload = source.game && typeof source.game === "object" ? source.game : source;
+  const hasGameShape =
+    gamePayload &&
+    typeof gamePayload === "object" &&
+    (Array.isArray(gamePayload.deck) || gamePayload.player || gamePayload.computer);
+  if (!hasGameShape) {
+    return null;
+  }
+
+  const game = CardGame.fromSaveData(gamePayload);
+  const savedAt = clampInteger(source.savedAt, 0, Date.now() + 86_400_000, Date.now());
+  return {
+    version: SAVE_SLOT_VERSION,
+    appVersion: typeof source.appVersion === "string" ? source.appVersion.slice(0, 48) : APP_VERSION,
+    savedAt,
+    label: typeof source.label === "string" ? source.label.slice(0, 32) : "",
+    currentSeed: normalizeSeed(source.currentSeed ?? source.seed ?? game.seed),
+    selectedSkillIndex: clampInteger(source.selectedSkillIndex, 0, Math.max(game.player.skills.length - 1, 0), 0),
+    winStreak: clampInteger(source.winStreak, 0, MAX_WIN_STREAK, state.winStreak),
+    game: game.toSaveData(),
+  };
+}
+
+function buildSaveEnvelope(label = "") {
+  return normalizeSaveEnvelope({
+    version: SAVE_SLOT_VERSION,
+    appVersion: APP_VERSION,
+    savedAt: Date.now(),
+    label,
+    currentSeed: state.currentSeed,
+    selectedSkillIndex: state.selectedSkillIndex,
+    winStreak: state.winStreak,
+    game: state.game.toSaveData(),
+  });
+}
+
+function loadSaveSlots() {
+  if (!storageIsAvailable()) {
+    return;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SAVE_SLOTS_KEY);
+    if (!raw) {
+      return;
+    }
+    if (raw.length > MAX_SAVE_SLOTS_JSON_CHARS * 2) {
+      window.localStorage.removeItem(SAVE_SLOTS_KEY);
+      return;
+    }
+
+    const payload = JSON.parse(raw);
+    const rawSlots = Array.isArray(payload?.slots) ? payload.slots : Array.isArray(payload) ? payload : [];
+    state.saveSlots = Array.from({ length: SAVE_SLOT_COUNT }, (_, index) => normalizeSaveEnvelope(rawSlots[index]));
+
+    if (payload?.version !== SAVE_SLOT_VERSION || rawSlots.length !== SAVE_SLOT_COUNT) {
+      writeSaveSlots(state.saveSlots);
+    }
+  } catch {
+    try {
+      window.localStorage.removeItem(SAVE_SLOTS_KEY);
+    } catch {
+      storageAvailable = false;
+    }
+  }
+}
+
+function writeSaveSlots(slots) {
+  const normalizedSlots = Array.from({ length: SAVE_SLOT_COUNT }, (_, index) => normalizeSaveEnvelope(slots[index]));
+  state.saveSlots = normalizedSlots;
+  if (!storageIsAvailable()) {
+    return false;
+  }
+
+  const started = nowMs();
+  const json = JSON.stringify({
+    version: SAVE_SLOT_VERSION,
+    savedAt: Date.now(),
+    slots: normalizedSlots,
+  });
+  if (json.length > MAX_SAVE_SLOTS_JSON_CHARS || nowMs() - started > STORAGE_OPERATION_BUDGET_MS * 4) {
+    return false;
+  }
+
+  try {
+    window.localStorage.setItem(SAVE_SLOTS_KEY, json);
+    return true;
+  } catch {
+    storageAvailable = false;
+    return false;
+  }
+}
+
+function restoreSaveEnvelope(envelope, message) {
+  const normalized = normalizeSaveEnvelope(envelope);
+  if (!normalized) {
+    state.game.log("存档读取失败：文件或栏位内容不是有效的卡牌轮盘存档。");
+    return false;
+  }
+
+  state.game = CardGame.fromSaveData(normalized.game);
+  state.currentSeed = normalized.currentSeed;
+  state.selectedSkillIndex = clampInteger(
+    normalized.selectedSkillIndex,
+    0,
+    Math.max(state.game.player.skills.length - 1, 0),
+    0,
+  );
+  state.winStreak = normalized.winStreak;
+  state.currentGameId += 1;
+  state.scoredGameId = state.game.gameOver ? state.currentGameId : null;
+  state.isComputerPlayback = false;
+  elements.seedInput.value = state.currentSeed ?? "";
+  if (message) {
+    state.game.log(message);
+  }
+  return true;
+}
+
+function saveToSlot(index) {
+  const slotNumber = index + 1;
+  if (state.saveSlots[index] && !window.confirm(`覆盖存档栏位 ${slotNumber} 吗？`)) {
+    return;
+  }
+  const nextSlots = [...state.saveSlots];
+  nextSlots[index] = buildSaveEnvelope(`栏位 ${slotNumber}`);
+  const persisted = writeSaveSlots(nextSlots);
+  state.game.log(persisted ? `已保存到存档栏位 ${slotNumber}。` : `已保存到栏位 ${slotNumber}，但浏览器未允许写入本地存储。`);
+}
+
+function loadFromSlot(index) {
+  const slot = state.saveSlots[index];
+  if (!slot) {
+    state.game.log(`存档栏位 ${index + 1} 为空。`);
+    return;
+  }
+  restoreSaveEnvelope(slot, `已读取存档栏位 ${index + 1}。`);
+}
+
+function clearSaveSlot(index) {
+  const slotNumber = index + 1;
+  if (!state.saveSlots[index]) {
+    return;
+  }
+  if (!window.confirm(`清除存档栏位 ${slotNumber} 吗？`)) {
+    return;
+  }
+  const nextSlots = [...state.saveSlots];
+  nextSlots[index] = null;
+  writeSaveSlots(nextSlots);
+  state.game.log(`已清除存档栏位 ${slotNumber}。`);
+}
+
+function formatFileStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function exportCurrentSave() {
+  const envelope = buildSaveEnvelope("导出存档");
+  if (!envelope) {
+    state.game.log("导出失败：当前对局状态无法生成存档。");
+    return;
+  }
+  const json = JSON.stringify(envelope, null, 2);
+  if (json.length > MAX_IMPORT_JSON_CHARS) {
+    state.game.log("导出失败：存档内容过大。");
+    return;
+  }
+
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `card-roulette-save-${formatFileStamp()}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  state.game.log("已导出当前存档文件。");
+}
+
+async function importSaveFromFile(file) {
+  if (!file) {
+    return;
+  }
+
+  try {
+    if (file.size > MAX_IMPORT_JSON_CHARS) {
+      throw new Error("too-large");
+    }
+    const text = await file.text();
+    if (text.length > MAX_IMPORT_JSON_CHARS) {
+      throw new Error("too-large");
+    }
+    const payload = JSON.parse(text);
+    if (!restoreSaveEnvelope(payload, "已导入存档文件。")) {
+      throw new Error("invalid-save");
+    }
+  } catch {
+    state.game.log("导入失败：请选择有效且大小合适的 JSON 存档文件。");
+  } finally {
+    elements.importSaveInput.value = "";
   }
 }
 
@@ -694,6 +927,77 @@ function renderDifficultySelect() {
   elements.difficultySelect.disabled = state.isComputerPlayback;
 }
 
+function formatSavedTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function makeSaveSlotButton(label, title, handler, className = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `small-button ${className}`.trim();
+  button.textContent = label;
+  button.title = title;
+  button.disabled = state.isComputerPlayback;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function renderSaveSlots() {
+  elements.saveSlots.innerHTML = "";
+  state.saveSlots.forEach((slot, index) => {
+    const slotNumber = index + 1;
+    const row = document.createElement("div");
+    row.className = `save-slot ${slot ? "" : "is-empty"}`.trim();
+
+    const summary = document.createElement("div");
+    summary.className = "save-slot-summary";
+    const title = document.createElement("strong");
+    title.textContent = `栏位 ${slotNumber}`;
+    const meta = document.createElement("span");
+    if (slot) {
+      const gameData = slot.game ?? {};
+      const difficulty = DIFFICULTY_NAMES[gameData.computerDifficulty] ?? "中等";
+      const phase = gameData.gameOver ? `${gameData.winner ?? "未知"}获胜` : "进行中";
+      const seed = slot.currentSeed ? `种子 ${slot.currentSeed}` : "随机";
+      meta.textContent = `${formatSavedTime(slot.savedAt)} · ${difficulty} · ${phase} · ${seed}`;
+    } else {
+      meta.textContent = "空栏位";
+    }
+    summary.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "save-slot-actions";
+    actions.append(
+      makeSaveSlotButton("保存", `保存到栏位 ${slotNumber}`, () => {
+        saveToSlot(index);
+        render();
+      }, "save-button"),
+      makeSaveSlotButton("读取", `读取栏位 ${slotNumber}`, () => {
+        loadFromSlot(index);
+        render();
+      }),
+      makeSaveSlotButton("清除", `清除栏位 ${slotNumber}`, () => {
+        clearSaveSlot(index);
+        render();
+      }, "danger"),
+    );
+    actions.children[1].disabled = state.isComputerPlayback || !slot;
+    actions.children[2].disabled = state.isComputerPlayback || !slot;
+
+    row.append(summary, actions);
+    elements.saveSlots.append(row);
+  });
+}
+
 function renderLogs() {
   const logs = state.game.logs.slice(-80);
   if (!logs.length) {
@@ -737,6 +1041,8 @@ function render() {
   elements.clearSaveButton.disabled = state.isComputerPlayback;
   elements.seedInput.disabled = state.isComputerPlayback;
   elements.seedRestartButton.disabled = state.isComputerPlayback;
+  elements.exportSaveButton.disabled = state.isComputerPlayback;
+  elements.importSaveButton.disabled = state.isComputerPlayback;
   elements.computerPanel.innerHTML = renderDuelist(game.computer, "智能电脑");
   elements.playerPanel.innerHTML = renderDuelist(game.player, "玩家");
 
@@ -749,6 +1055,7 @@ function render() {
   renderDeck();
   renderActions();
   renderDifficultySelect();
+  renderSaveSlots();
   renderWinStreak();
   renderPlayerSkills();
   renderComputerSkills();
@@ -799,7 +1106,7 @@ function bindEvents() {
     if (state.isComputerPlayback) {
       return;
     }
-    if (!window.confirm("清除本机缓存存档？连胜、难度和困难 AI 学习记忆会重置。")) {
+    if (!window.confirm("清除本机缓存存档？连胜、难度、困难 AI 学习记忆和三个存档栏都会重置。")) {
       return;
     }
     clearPersistentState();
@@ -819,6 +1126,30 @@ function bindEvents() {
       return;
     }
     restartFromSeedInput();
+    render();
+  });
+
+  elements.exportSaveButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
+    exportCurrentSave();
+    render();
+  });
+
+  elements.importSaveButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
+    elements.importSaveInput.click();
+  });
+
+  elements.importSaveInput.addEventListener("change", async () => {
+    if (state.isComputerPlayback) {
+      elements.importSaveInput.value = "";
+      return;
+    }
+    await importSaveFromFile(elements.importSaveInput.files?.[0] ?? null);
     render();
   });
 
@@ -865,6 +1196,7 @@ function bindEvents() {
 }
 
 loadPersistentState();
+loadSaveSlots();
 renderRules();
 bindEvents();
 window.addEventListener("pagehide", flushPersistentState);
