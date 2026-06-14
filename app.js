@@ -12,7 +12,7 @@ import {
 } from './game-core.js';
 
 const STORAGE_KEY = "cardRoulette:persistentState";
-const APP_VERSION = "20260614-save-slots";
+const APP_VERSION = "20260614-save-dialog";
 const STORAGE_VERSION = 1;
 const SAVE_SLOTS_KEY = "cardRoulette:saveSlots";
 const SAVE_SLOT_VERSION = 1;
@@ -64,6 +64,9 @@ const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key
 const elements = {
   resetButton: $("#resetButton"),
   clearSaveButton: $("#clearSaveButton"),
+  saveDialogButton: $("#saveDialogButton"),
+  saveDialog: $("#saveDialog"),
+  closeSaveDialogButton: $("#closeSaveDialogButton"),
   saveSlots: $("#saveSlots"),
   exportSaveButton: $("#exportSaveButton"),
   importSaveButton: $("#importSaveButton"),
@@ -1039,6 +1042,7 @@ function render() {
   syncWinStreak();
   elements.resetButton.disabled = state.isComputerPlayback;
   elements.clearSaveButton.disabled = state.isComputerPlayback;
+  elements.saveDialogButton.disabled = state.isComputerPlayback;
   elements.seedInput.disabled = state.isComputerPlayback;
   elements.seedRestartButton.disabled = state.isComputerPlayback;
   elements.exportSaveButton.disabled = state.isComputerPlayback;
@@ -1129,6 +1133,21 @@ function bindEvents() {
     render();
   });
 
+  elements.saveDialogButton.addEventListener("click", () => {
+    if (state.isComputerPlayback) {
+      return;
+    }
+    if (typeof elements.saveDialog.showModal === "function") {
+      elements.saveDialog.showModal();
+    } else {
+      elements.saveDialog.setAttribute("open", "open");
+    }
+  });
+
+  elements.closeSaveDialogButton.addEventListener("click", () => {
+    elements.saveDialog.close();
+  });
+
   elements.exportSaveButton.addEventListener("click", () => {
     if (state.isComputerPlayback) {
       return;
@@ -1191,6 +1210,12 @@ function bindEvents() {
   elements.rulesDialog.addEventListener("click", (event) => {
     if (event.target === elements.rulesDialog) {
       elements.rulesDialog.close();
+    }
+  });
+
+  elements.saveDialog.addEventListener("click", (event) => {
+    if (event.target === elements.saveDialog) {
+      elements.saveDialog.close();
     }
   });
 }

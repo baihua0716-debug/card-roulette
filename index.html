@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="黑卡 / 白卡概率博弈网页游戏" />
     <title>卡牌轮盘</title>
-    <link rel="stylesheet" href="./styles.css?v=20260614-save-slots" />
+    <link rel="stylesheet" href="./styles.css?v=20260614-save-dialog" />
   </head>
   <body>
     <div class="app-shell">
@@ -31,13 +31,13 @@
             <span aria-hidden="true">?</span>
             <span>规则</span>
           </button>
+          <button class="icon-button" id="saveDialogButton" type="button" title="打开存档页面">
+            <span aria-hidden="true">▣</span>
+            <span>存档</span>
+          </button>
           <button class="icon-button reset-button" id="resetButton" type="button" title="重新开始">
             <span aria-hidden="true">↻</span>
             <span>重开</span>
-          </button>
-          <button class="icon-button reset-button" id="clearSaveButton" type="button" title="清除本机缓存存档">
-            <span aria-hidden="true">⌫</span>
-            <span>清存档</span>
           </button>
         </div>
       </header>
@@ -71,25 +71,6 @@
               <span>电脑难度</span>
               <select id="difficultySelect"></select>
             </label>
-          </section>
-
-          <section class="save-section">
-            <div class="section-heading">
-              <h2>存档</h2>
-              <span>本机 / 文件</span>
-            </div>
-            <div class="save-slots" id="saveSlots"></div>
-            <div class="save-tools">
-              <button class="small-button" id="exportSaveButton" type="button" title="导出当前对局存档 JSON">
-                <span aria-hidden="true">⇩</span>
-                <span>导出</span>
-              </button>
-              <button class="small-button" id="importSaveButton" type="button" title="导入 JSON 存档文件">
-                <span aria-hidden="true">⇧</span>
-                <span>导入</span>
-              </button>
-              <input class="hidden" id="importSaveInput" type="file" accept="application/json,.json" />
-            </div>
           </section>
 
           <section class="skill-section">
@@ -150,6 +131,37 @@
       </div>
     </dialog>
 
-    <script type="module" src="./app.js?v=20260614-save-slots"></script>
+    <dialog id="saveDialog" class="save-dialog">
+      <div class="dialog-head">
+        <h2>存档</h2>
+        <button class="icon-only" id="closeSaveDialogButton" type="button" title="关闭存档">×</button>
+      </div>
+      <div class="save-content">
+        <section class="save-section">
+          <div class="section-heading">
+            <h2>本机栏位</h2>
+            <span>3 个栏位</span>
+          </div>
+          <div class="save-slots" id="saveSlots"></div>
+          <div class="save-tools">
+            <button class="small-button" id="exportSaveButton" type="button" title="导出当前对局存档 JSON">
+              <span aria-hidden="true">⇩</span>
+              <span>导出</span>
+            </button>
+            <button class="small-button" id="importSaveButton" type="button" title="导入 JSON 存档文件">
+              <span aria-hidden="true">⇧</span>
+              <span>导入</span>
+            </button>
+            <button class="small-button danger" id="clearSaveButton" type="button" title="清除本机缓存存档">
+              <span aria-hidden="true">⌫</span>
+              <span>清存档</span>
+            </button>
+            <input class="hidden" id="importSaveInput" type="file" accept="application/json,.json" />
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <script type="module" src="./app.js?v=20260614-save-dialog"></script>
   </body>
 </html>

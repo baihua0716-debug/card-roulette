@@ -738,14 +738,23 @@ h3 {
   color: var(--text);
 }
 
-.rules-dialog {
-  width: min(720px, calc(100vw - 32px));
+.rules-dialog,
+.save-dialog {
   max-height: min(760px, calc(100vh - 32px));
   padding: 0;
   color: var(--text);
 }
 
-.rules-dialog::backdrop {
+.rules-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.save-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.rules-dialog::backdrop,
+.save-dialog::backdrop {
   background: rgba(0, 0, 0, 0.62);
 }
 
@@ -762,10 +771,15 @@ h3 {
   font-size: 1.2rem;
 }
 
-.rules-content {
+.rules-content,
+.save-content {
   max-height: calc(100vh - 130px);
   overflow: auto;
   padding: 16px;
+}
+
+.save-content .section-heading {
+  margin-bottom: 10px;
 }
 
 .rules-content ol {
