@@ -711,6 +711,12 @@ class CardGame {
     if (this.computerDevilMode) {
       return this.computerTryUseDevilHealingSkill();
     }
+    if (this.computerCanWinImmediately()) {
+      return false;
+    }
+    if (this.computerTryUseEmergencyRecoverySkill()) {
+      return true;
+    }
     if (this.computerDifficulty === ComputerDifficulty.EASY) {
       return this.computerTryUseSkillEasy();
     }
@@ -737,11 +743,6 @@ class CardGame {
 
   computerTryUseSkillMedium() {
     this.ensureDeck();
-    const known = this.getKnownCard("computer", 0);
-
-    if (known === Card.BLACK && this.predictedBlackDamage(this.computer) >= this.player.hp) {
-      return false;
-    }
 
     const scoredSkills = [];
     for (const skill of unique(this.computer.skills)) {
@@ -869,17 +870,20 @@ class CardGame {
     if (known === Card.WHITE) {
       return "self";
     }
+    const blackProb = this.blackProbability();
+    if (blackProb >= 0.85) {
+      return "opponent";
+    }
+    if (blackProb <= 0.15) {
+      return "self";
+    }
     if (this.random() < 0.35) {
       return this.choice(["opponent", "self"]);
     }
-    return this.blackProbability() >= 0.5 ? "opponent" : "self";
+    return blackProb >= 0.5 ? "opponent" : "self";
   }
 
   computerTryUseSkillHard() {
-    if (this.computerTryUseEmergencyRecoverySkill()) {
-      return true;
-    }
-
     const skillActions = this.getComputerSkillActions();
     if (!skillActions.length) {
       return false;
@@ -928,7 +932,7 @@ class CardGame {
 
   computerCanWinImmediately() {
     return (
-      this.getKnownCard("computer", 0) === Card.BLACK &&
+      this.currentBlackProbabilityForComputer() >= 1 &&
       this.predictedBlackDamage(this.computer) >= this.player.hp
     );
   }
@@ -1766,6 +1770,9 @@ class CardGame {
   }
 
   chooseMonteCarloTarget(actorKey) {
+    if (actorKey === "computer" && this.computerDevilMode) {
+      return "self";
+    }
     const known = this.getKnownCard(actorKey, 0);
     if (known === Card.BLACK) {
       return "opponent";

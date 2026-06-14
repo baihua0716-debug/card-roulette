@@ -186,6 +186,7 @@ assert.equal(Object.hasOwn(SKILL_WEIGHTS, Skill.DEVIL_HEAD), false);
   game.computerDevilMode = true;
   assert.equal(game.computerTryUseSkill(), false);
   assert.equal(game.computerChooseAction(), "self");
+  assert.equal(game.chooseMonteCarloTarget("computer"), "self");
   assert.deepEqual(game.computer.skills, [Skill.FREEZE, Skill.CONVERT]);
 }
 
@@ -448,9 +449,57 @@ withRandom(0.75, () => {
 }
 
 {
+  const game = freshGame({
+    deck: [Card.BLACK, Card.BLACK],
+    playerHp: 1,
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.EASY;
+  game.random = () => 0;
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.gameOver, true);
+  assert.equal(game.player.hp, 0);
+  assert.deepEqual(game.computer.skills, [Skill.HEAL]);
+  assert.equal(game.lastComputerActionStepKind, "play");
+}
+
+{
   const game = freshGame({ deck: [Card.BLACK, Card.WHITE], computerSkills: [] });
   game.computerDifficulty = ComputerDifficulty.HARD;
   assert.doesNotThrow(() => game.computerChooseAction());
+}
+
+{
+  const game = freshGame({
+    deck: [Card.WHITE, Card.BLACK],
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.EASY;
+  game.random = () => 0;
+  game.setKnownCard("computer", 0, Card.WHITE);
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.computer.hp, 2);
+  assert.deepEqual(game.computer.skills, []);
+  assert.equal(game.lastComputerActionStepKind, "skill");
+}
+
+{
+  const game = freshGame({
+    deck: [Card.WHITE, Card.BLACK],
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.MEDIUM;
+  game.setKnownCard("computer", 0, Card.WHITE);
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.computer.hp, 2);
+  assert.deepEqual(game.computer.skills, []);
+  assert.equal(game.lastComputerActionStepKind, "skill");
 }
 
 {
@@ -479,6 +528,22 @@ withRandom(0.75, () => {
   game.turn = "computer";
   game.computerDifficulty = ComputerDifficulty.HARD;
   game.setKnownCard("computer", 0, Card.BLACK);
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.gameOver, true);
+  assert.equal(game.player.hp, 0);
+  assert.deepEqual(game.computer.skills, [Skill.HEAL]);
+  assert.equal(game.lastComputerActionStepKind, "play");
+}
+
+{
+  const game = freshGame({
+    deck: [Card.BLACK, Card.BLACK],
+    playerHp: 1,
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.MEDIUM;
   assert.equal(game.computerActionStepOnce(), true);
   assert.equal(game.gameOver, true);
   assert.equal(game.player.hp, 0);
