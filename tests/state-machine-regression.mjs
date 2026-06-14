@@ -29,6 +29,7 @@ function freshGame({
   game.computerSkillUsesThisTurn = 0;
   game.computerTurnAnnounced = false;
   game.lastComputerActionStepKind = null;
+  game.computerDevilMode = false;
   game.logs = [];
   return game;
 }
@@ -50,6 +51,8 @@ assert.equal(DIFFICULTY_NAMES[ComputerDifficulty.MEDIUM], "中等");
 assert.equal(DIFFICULTY_NAMES[ComputerDifficulty.HARD], "困难");
 assert.equal(Skill.RISK, "risk");
 assert.equal(displaySkill(Skill.RISK), "涉险");
+assert.equal(Skill.DEVIL_HEAD, "devil_head");
+assert.equal(displaySkill(Skill.DEVIL_HEAD), "恶魔的头");
 assert.equal(SKILL_WEIGHTS[Skill.HEAL], 2);
 assert.equal(SKILL_WEIGHTS[Skill.SHUFFLE], 2);
 assert.equal(SKILL_WEIGHTS[Skill.AMPLIFY], 2);
@@ -60,6 +63,7 @@ assert.equal(SKILL_WEIGHTS[Skill.OMEN], 0.5);
 assert.equal(SKILL_WEIGHTS[Skill.TAKE], 0.5);
 assert.equal(SKILL_WEIGHTS[Skill.CONVERT], 0.5);
 assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
+assert.equal(Object.hasOwn(SKILL_WEIGHTS, Skill.DEVIL_HEAD), false);
 
 {
   const game = new CardGame();
@@ -102,6 +106,7 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   game.computerSkillUsesThisTurn = 2;
   game.computerTurnAnnounced = true;
   game.lastComputerActionStepKind = "skill";
+  game.computerDevilMode = true;
   game.logs = ["saved state"];
 
   const restored = CardGame.fromSaveData(game.toSaveData());
@@ -121,8 +126,67 @@ assert.equal(SKILL_WEIGHTS[Skill.OVERCLOCK], 0.5);
   assert.equal(restored.computerSkillUsesThisTurn, 2);
   assert.equal(restored.computerTurnAnnounced, true);
   assert.equal(restored.lastComputerActionStepKind, "skill");
+  assert.equal(restored.computerDevilMode, true);
   assert.deepEqual(restored.logs, ["saved state"]);
   assert.equal(restored.random(), game.random());
+}
+
+{
+  const game = freshGame();
+  game.random = () => 0.001;
+  game.player.skills = [];
+  game.computer.skills = [];
+  game.dealSkills(game.player, 1);
+  game.dealSkills(game.computer, 1);
+  assert.deepEqual(game.player.skills, [Skill.DEVIL_HEAD]);
+  assert.notEqual(game.computer.skills[0], Skill.DEVIL_HEAD);
+}
+
+{
+  const game = freshGame();
+  game.random = () => 0.001;
+  game.player.skills = [];
+  game.dealSkills(game.player, 4);
+  assert.equal(game.player.skills.filter((skill) => skill === Skill.DEVIL_HEAD).length, 1);
+}
+
+{
+  const game = freshGame({ playerSkills: [Skill.DEVIL_HEAD] });
+  assert.equal(game.playerUseSkillByIndex(0), true);
+  assert.equal(game.computerDevilMode, true);
+  assert.deepEqual(game.player.skills, []);
+}
+
+{
+  const game = freshGame({
+    deck: [Card.BLACK, Card.WHITE],
+    computerHp: 4,
+    computerSkills: [Skill.FREEZE, Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDevilMode = true;
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.computer.hp, 5);
+  assert.deepEqual(game.computer.skills, [Skill.FREEZE]);
+  assert.equal(game.turn, "computer");
+  assert.equal(game.lastComputerActionStepKind, "skill");
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.computer.hp, 4);
+  assert.deepEqual(game.deck, [Card.WHITE]);
+  assert.equal(game.turn, "player");
+  assert.equal(game.lastComputerActionStepKind, "play");
+}
+
+{
+  const game = freshGame({
+    deck: [Card.WHITE, Card.BLACK],
+    computerSkills: [Skill.FREEZE, Skill.CONVERT],
+  });
+  game.turn = "computer";
+  game.computerDevilMode = true;
+  assert.equal(game.computerTryUseSkill(), false);
+  assert.equal(game.computerChooseAction(), "self");
+  assert.deepEqual(game.computer.skills, [Skill.FREEZE, Skill.CONVERT]);
 }
 
 {

@@ -12,7 +12,7 @@ import {
 } from './game-core.js';
 
 const STORAGE_KEY = "cardRoulette:persistentState";
-const APP_VERSION = "20260614-save-dialog";
+const APP_VERSION = "20260614-hidden-patch";
 const STORAGE_VERSION = 1;
 const SAVE_SLOTS_KEY = "cardRoulette:saveSlots";
 const SAVE_SLOT_VERSION = 1;
@@ -31,7 +31,9 @@ const COMPUTER_ACTION_OBSERVE_MS = 360;
 const COMPUTER_ACTION_MAX_STEPS = 32;
 const VALID_DIFFICULTIES = new Set(Object.values(ComputerDifficulty));
 const VALID_SKILLS = new Set(Object.values(Skill));
+const HIDDEN_RULE_SKILLS = new Set([Skill.DEVIL_HEAD]);
 const STORED_SKILL_PRIORITY = [
+  Skill.DEVIL_HEAD,
   Skill.TAKE,
   Skill.OVERCLOCK,
   Skill.AMPLIFY,
@@ -716,6 +718,9 @@ function effectPills(player, perspective) {
   if (player.skipTurn) {
     effects.push(`${pronoun}将跳过回合`);
   }
+  if (player.key === "computer" && state.game.computerDevilMode) {
+    effects.push("恶魔的头");
+  }
   return effects;
 }
 
@@ -1012,6 +1017,7 @@ function renderLogs() {
 
 function renderRules() {
   elements.rulesSkills.innerHTML = Object.values(Skill)
+    .filter((skill) => !HIDDEN_RULE_SKILLS.has(skill))
     .map(
       (skill) => `
         <div class="rules-skill">

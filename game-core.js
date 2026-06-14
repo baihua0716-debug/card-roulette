@@ -41,6 +41,7 @@ const Skill = Object.freeze({
   TAKE: "take",
   OVERCLOCK: "overclock",
   RISK: "risk",
+  DEVIL_HEAD: "devil_head",
 });
 
 const SKILL_NAMES = Object.freeze({
@@ -54,6 +55,7 @@ const SKILL_NAMES = Object.freeze({
   [Skill.TAKE]: "夺取",
   [Skill.OVERCLOCK]: "超频",
   [Skill.RISK]: "涉险",
+  [Skill.DEVIL_HEAD]: "恶魔的头",
 });
 
 const SKILL_DESCRIPTIONS = Object.freeze({
@@ -67,6 +69,7 @@ const SKILL_DESCRIPTIONS = Object.freeze({
   [Skill.TAKE]: "夺取另一方一个技能，并立即使用它。不能连续夺取“夺取”。",
   [Skill.OVERCLOCK]: "立刻扣 1 点血量，进入超频状态：下一次出牌若为黑卡，则造成 3 点伤害；若为白卡，超频状态也会消耗。不能与增幅叠加。",
   [Skill.RISK]: "涉险一搏：50% 概率回复 2 点血量，50% 概率失去 1 点血量。",
+  [Skill.DEVIL_HEAD]: "强行扭转电脑的行动模式：只会使用回血类技能，只会对自己出牌，直到本局结束。",
 });
 
 const SKILL_POOL = Object.freeze([
@@ -95,6 +98,9 @@ const SKILL_WEIGHTS = Object.freeze({
   [Skill.OVERCLOCK]: 0.5,
 });
 
+const DEVIL_HEAD_DRAW_CHANCE = 0.00666;
+const DEVIL_HEAD_HEALING_SKILLS = new Set([Skill.HEAL, Skill.RISK]);
+
 const AI_SKILL_PRIORITY = Object.freeze([
   Skill.TAKE,
   Skill.OVERCLOCK,
@@ -106,6 +112,7 @@ const AI_SKILL_PRIORITY = Object.freeze([
   Skill.RISK,
   Skill.OMEN,
   Skill.SHUFFLE,
+  Skill.DEVIL_HEAD,
 ]);
 
 const HARD_SKILL_COMBO_MEMORY_LIMIT = 96;
@@ -285,6 +292,7 @@ class CardGame {
     this.computerSkillUsesThisTurn = 0;
     this.computerTurnAnnounced = false;
     this.lastComputerActionStepKind = null;
+    this.computerDevilMode = false;
     this.silent = false;
     this.newRoundDeck();
   }
@@ -369,9 +377,25 @@ class CardGame {
     }
 
     const actualCount = Math.min(count, freeSlots);
-    const newSkills = Array.from({ length: actualCount }, () => this.weightedChoice(SKILL_WEIGHTS));
+    const newSkills = [];
+    for (let index = 0; index < actualCount; index += 1) {
+      newSkills.push(this.drawSkillFor(actor, newSkills));
+    }
     actor.skills.push(...newSkills);
     this.log(`${actor.name}获得了 ${actualCount} 个技能：${formatSkillList(newSkills)}`);
+  }
+
+  drawSkillFor(actor, pendingSkills = []) {
+    if (
+      actor.key === "player" &&
+      !this.computerDevilMode &&
+      !actor.skills.includes(Skill.DEVIL_HEAD) &&
+      !pendingSkills.includes(Skill.DEVIL_HEAD) &&
+      this.random() < DEVIL_HEAD_DRAW_CHANCE
+    ) {
+      return Skill.DEVIL_HEAD;
+    }
+    return this.weightedChoice(SKILL_WEIGHTS);
   }
 
   checkWinner() {
@@ -684,6 +708,9 @@ class CardGame {
   }
 
   computerTryUseSkill() {
+    if (this.computerDevilMode) {
+      return this.computerTryUseDevilHealingSkill();
+    }
     if (this.computerDifficulty === ComputerDifficulty.EASY) {
       return this.computerTryUseSkillEasy();
     }
@@ -691,6 +718,21 @@ class CardGame {
       return this.computerTryUseSkillHard();
     }
     return this.computerTryUseSkillMedium();
+  }
+
+  computerTryUseDevilHealingSkill() {
+    for (const skill of [Skill.HEAL, Skill.RISK]) {
+      if (!this.computer.skills.includes(skill)) {
+        continue;
+      }
+      if (skill === Skill.HEAL && this.computer.hp < this.computer.maxHp) {
+        return this.aiUseSkill(skill);
+      }
+      if (skill === Skill.RISK && this.computer.hp >= 2 && this.computer.hp <= this.computer.maxHp - 2) {
+        return this.aiUseSkill(skill);
+      }
+    }
+    return false;
   }
 
   computerTryUseSkillMedium() {
@@ -875,6 +917,9 @@ class CardGame {
   getComputerSkillActions() {
     const actions = [];
     for (const skill of unique(this.computer.skills)) {
+      if (this.computerDevilMode && !DEVIL_HEAD_HEALING_SKILLS.has(skill)) {
+        continue;
+      }
       if (skill === Skill.TAKE) {
         const takeTarget = this.computerChooseTakeTarget();
         if (takeTarget !== null) {
@@ -888,6 +933,13 @@ class CardGame {
   }
 
   executeComputerAction(action) {
+    if (this.computerDevilMode && action.type === "play") {
+      action = { ...action, target: "self" };
+    }
+    if (this.computerDevilMode && action.type === "skill" && !DEVIL_HEAD_HEALING_SKILLS.has(action.skill)) {
+      return false;
+    }
+
     const shouldLearn = this.shouldUseHardSkillLearning();
     const beforeScore = shouldLearn ? this.evaluatePositionForComputer() : 0;
     const comboKeys = shouldLearn ? this.hardSkillComboKeysForAction(action) : [];
@@ -1262,6 +1314,7 @@ class CardGame {
     clone.computerSkillUsesThisTurn = this.computerSkillUsesThisTurn;
     clone.computerTurnAnnounced = this.computerTurnAnnounced;
     clone.lastComputerActionStepKind = this.lastComputerActionStepKind;
+    clone.computerDevilMode = this.computerDevilMode;
     clone.randomSource = this.randomSource.clone();
     clone.seed = this.seed;
     clone.silent = true;
@@ -1293,6 +1346,7 @@ class CardGame {
       computerSkillUsesThisTurn: this.computerSkillUsesThisTurn,
       computerTurnAnnounced: this.computerTurnAnnounced,
       lastComputerActionStepKind: this.lastComputerActionStepKind,
+      computerDevilMode: this.computerDevilMode,
     };
   }
 
@@ -1350,6 +1404,7 @@ class CardGame {
     game.lastComputerActionStepKind = VALID_ACTION_STEP_KINDS.has(source.lastComputerActionStepKind)
       ? source.lastComputerActionStepKind
       : null;
+    game.computerDevilMode = Boolean(source.computerDevilMode ?? source.devilHeadActive);
     game.silent = false;
     return game;
   }
@@ -1381,9 +1436,12 @@ class CardGame {
 
   applyComputerActionForSimulation(action) {
     if (action.type === "play") {
-      return this.applyPlayDecision("computer", action.target);
+      return this.applyPlayDecision("computer", this.computerDevilMode ? "self" : action.target);
     }
     if (!this.computer.skills.includes(action.skill)) {
+      return false;
+    }
+    if (this.computerDevilMode && !DEVIL_HEAD_HEALING_SKILLS.has(action.skill)) {
       return false;
     }
     let success;
@@ -1474,6 +1532,9 @@ class CardGame {
     if (skill === Skill.DETECT) {
       return this.getKnownCard("player", 0) === null;
     }
+    if (skill === Skill.DEVIL_HEAD) {
+      return !this.computerDevilMode;
+    }
     return skill === Skill.SHUFFLE || skill === Skill.CONVERT;
   }
 
@@ -1500,6 +1561,9 @@ class CardGame {
     }
     if (skill === Skill.TAKE) {
       return 10;
+    }
+    if (skill === Skill.DEVIL_HEAD) {
+      return this.computerDevilMode ? 1 : 18;
     }
     if (skill === Skill.HEAL || skill === Skill.RISK) {
       return this.player.maxHp - this.player.hp + 6;
@@ -1538,6 +1602,9 @@ class CardGame {
     }
     if (skill === Skill.TAKE) {
       return opponent.skills.length ? 10 + Math.min(opponent.skills.length, 4) * 2 : 1;
+    }
+    if (skill === Skill.DEVIL_HEAD) {
+      return player.key === "player" && !this.computerDevilMode ? 18 : 1;
     }
     if (skill === Skill.DETECT) {
       return known === null ? 7 : 1;
@@ -2010,7 +2077,7 @@ class CardGame {
     const danger = this.dangerFromPlayerNextTurn();
     const currentDamage = this.predictedBlackDamage(this.computer);
 
-    if (skill === Skill.TAKE) {
+    if (skill === Skill.TAKE || skill === Skill.DEVIL_HEAD) {
       return -999;
     }
     if (skill === Skill.HEAL) {
@@ -2123,6 +2190,9 @@ class CardGame {
   }
 
   computerChooseAction() {
+    if (this.computerDevilMode) {
+      return "self";
+    }
     if (this.computerDifficulty === ComputerDifficulty.EASY) {
       return this.computerChooseActionEasy();
     }
@@ -2184,6 +2254,14 @@ class CardGame {
       this.log(`${opponent.name} 没有技能可夺取。`);
       return false;
     }
+    if (skill === Skill.DEVIL_HEAD && actor.key !== "player") {
+      this.log("恶魔的头没有回应电脑。");
+      return false;
+    }
+    if (skill === Skill.DEVIL_HEAD && this.computerDevilMode) {
+      this.log("恶魔的头已经注视着电脑。");
+      return false;
+    }
 
     this.log(`${actor.name} 使用了技能：${displaySkill(skill)}`);
 
@@ -2216,6 +2294,8 @@ class CardGame {
       this.skillOverclock(actor);
     } else if (skill === Skill.RISK) {
       this.skillRisk(actor);
+    } else if (skill === Skill.DEVIL_HEAD) {
+      this.skillDevilHead();
     } else {
       this.log("这个技能暂未实现。");
       return false;
@@ -2296,6 +2376,10 @@ class CardGame {
       this.log("想夺取的技能已经不存在了。");
       return false;
     }
+    if (selected === Skill.DEVIL_HEAD && actor.key !== "player") {
+      this.log("电脑没能理解恶魔的头。");
+      return false;
+    }
 
     removeFirst(opponent.skills, selected);
     this.log(`${actor.name} 夺取并立即使用了：${displaySkill(selected)}`);
@@ -2315,6 +2399,11 @@ class CardGame {
     this.log(`${actor.name} 失去 1 点血量并进入超频状态。当前血量：${actor.hp}/${actor.maxHp}`);
     this.log("下一次由其出牌时，若为黑卡则造成 3 点伤害；若为白卡，超频状态也会消耗。");
     this.checkWinner();
+  }
+
+  skillDevilHead() {
+    this.computerDevilMode = true;
+    this.log("恶魔的头睁开了眼。电脑的行动模式被强行扭转：它只会使用回血类技能，只会对自己出牌，直到本局结束。");
   }
 
   playCard(actor, target) {
