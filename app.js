@@ -9,10 +9,10 @@ import {
   clamp,
   displaySkill,
   normalizeSeed,
-} from './game-core.js';
+} from './game-core.js?v=20260614-hard-heal-fix';
 
 const STORAGE_KEY = "cardRoulette:persistentState";
-const APP_VERSION = "20260614-hidden-patch";
+const APP_VERSION = "20260614-hard-heal-fix";
 const STORAGE_VERSION = 1;
 const SAVE_SLOTS_KEY = "cardRoulette:saveSlots";
 const SAVE_SLOT_VERSION = 1;

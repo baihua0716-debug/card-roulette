@@ -2,7 +2,7 @@
 
 卡牌轮盘是一个黑卡 / 白卡概率博弈网页游戏。玩家和电脑轮流从未知牌堆中出牌，通过判断概率、使用技能、管理血量来击败对方。
 
-当前版本：`20260614-hidden-patch`
+当前版本：`20260614-hard-heal-fix`
 
 在线游玩：<https://baihua0716-debug.github.io/card-roulette/>
 

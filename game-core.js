@@ -876,6 +876,10 @@ class CardGame {
   }
 
   computerTryUseSkillHard() {
+    if (this.computerTryUseEmergencyRecoverySkill()) {
+      return true;
+    }
+
     const skillActions = this.getComputerSkillActions();
     if (!skillActions.length) {
       return false;
@@ -901,6 +905,32 @@ class CardGame {
       return false;
     }
     return this.executeComputerAction(bestAction);
+  }
+
+  computerTryUseEmergencyRecoverySkill() {
+    if (this.computer.hp >= this.computer.maxHp || this.computerCanWinImmediately()) {
+      return false;
+    }
+    if (this.computer.hp <= 2 && this.computer.skills.includes(Skill.HEAL)) {
+      return this.executeComputerAction({ type: "skill", skill: Skill.HEAL, takeTarget: null });
+    }
+    if (
+      this.computer.hp === 2 &&
+      this.computer.maxHp - this.computer.hp >= 2 &&
+      this.computer.skills.includes(Skill.RISK) &&
+      !this.computer.skills.includes(Skill.HEAL) &&
+      this.dangerFromPlayerNextTurn() >= 28
+    ) {
+      return this.executeComputerAction({ type: "skill", skill: Skill.RISK, takeTarget: null });
+    }
+    return false;
+  }
+
+  computerCanWinImmediately() {
+    return (
+      this.getKnownCard("computer", 0) === Card.BLACK &&
+      this.predictedBlackDamage(this.computer) >= this.player.hp
+    );
   }
 
   computerChooseActionHard() {
@@ -995,7 +1025,7 @@ class CardGame {
     const threatResponseScore = this.scoreHardThreatResponse(action);
     const comboPotentialScore = this.scoreSkillComboPotential(action);
     const learnedComboScore = this.scoreLearnedSkillCombos(action);
-    const retentionPenalty = action.type === "skill" ? this.skillRetentionValue(this.computer, action.skill) * 0.65 : 0;
+    const retentionPenalty = this.skillUseRetentionPenalty(action);
     const finalScore =
       mediumScore * 0.45 +
       searchScore * 0.55 +
@@ -1005,8 +1035,21 @@ class CardGame {
       comboPotentialScore +
       learnedComboScore -
       retentionPenalty;
-    this.rememberHardSkillCombo(action, finalScore, 0.06);
     return finalScore;
+  }
+
+  skillUseRetentionPenalty(action) {
+    if (action.type !== "skill") {
+      return 0;
+    }
+    const retention = this.skillRetentionValue(this.computer, action.skill);
+    if (action.skill === Skill.HEAL) {
+      return this.computer.hp <= 2 ? 0 : retention * 0.25;
+    }
+    if (action.skill === Skill.RISK) {
+      return this.computer.hp <= 2 ? 0 : retention * 0.35;
+    }
+    return retention * 0.65;
   }
 
   scoreComputerActionMedium(action) {

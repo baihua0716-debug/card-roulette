@@ -454,6 +454,39 @@ withRandom(0.75, () => {
 }
 
 {
+  const game = freshGame({
+    deck: [Card.WHITE, Card.BLACK],
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  game.setKnownCard("computer", 0, Card.WHITE);
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.computer.hp, 2);
+  assert.deepEqual(game.computer.skills, []);
+  assert.equal(game.turn, "computer");
+  assert.equal(game.lastComputerActionStepKind, "skill");
+}
+
+{
+  const game = freshGame({
+    deck: [Card.BLACK, Card.WHITE],
+    playerHp: 1,
+    computerHp: 1,
+    computerSkills: [Skill.HEAL],
+  });
+  game.turn = "computer";
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  game.setKnownCard("computer", 0, Card.BLACK);
+  assert.equal(game.computerActionStepOnce(), true);
+  assert.equal(game.gameOver, true);
+  assert.equal(game.player.hp, 0);
+  assert.deepEqual(game.computer.skills, [Skill.HEAL]);
+  assert.equal(game.lastComputerActionStepKind, "play");
+}
+
+{
   const game = freshGame({ deck: [Card.WHITE, Card.BLACK], computerSkills: [Skill.DETECT, Skill.CONVERT] });
   game.computerDifficulty = ComputerDifficulty.HARD;
   const action = { type: "skill", skill: Skill.DETECT, takeTarget: null };
@@ -464,6 +497,14 @@ withRandom(0.75, () => {
   assert(game.scoreLearnedSkillCombos(action) > 0);
   game.rememberHardSkillCombo(action, -120, 1);
   assert(game.scoreLearnedSkillCombos(action) < 0);
+}
+
+{
+  const game = freshGame({ deck: [Card.WHITE, Card.BLACK], computerSkills: [Skill.DETECT, Skill.CONVERT] });
+  game.computerDifficulty = ComputerDifficulty.HARD;
+  game.hardSkillComboMemory = new Map();
+  game.scoreHardComputerAction({ type: "skill", skill: Skill.DETECT, takeTarget: null });
+  assert.equal(game.hardSkillComboMemory.size, 0);
 }
 
 {
