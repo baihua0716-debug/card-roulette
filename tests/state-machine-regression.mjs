@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { Card, CardGame, ComputerDifficulty, DIFFICULTY_NAMES, Skill, SKILL_WEIGHTS, displaySkill } from "../game-core.js";
+import { createRandomSource } from "../game-random.js";
 
 function freshGame({
   deck = [Card.BLACK, Card.WHITE],
@@ -82,6 +83,27 @@ assert.equal(Object.hasOwn(SKILL_WEIGHTS, Skill.DEVIL_HEAD), false);
   assert.deepEqual(gameA.deck, gameB.deck);
   assert.deepEqual(gameA.player.skills, gameB.player.skills);
   assert.deepEqual(gameA.computer.skills, gameB.computer.skills);
+}
+
+{
+  const seeded = createRandomSource({ seed: "test-seed" });
+  const seededAgain = createRandomSource({ seed: "test-seed" });
+  const otherSeed = createRandomSource({ seed: "other-seed" });
+  assert.notEqual(seeded.snapshot().state, 0);
+  assert.equal(createRandomSource({ snapshot: { mode: "seeded", seed: "zero-state", state: 0 } }).snapshot().state, 0);
+  assert.deepEqual(seeded.next(), seededAgain.next());
+  assert.notEqual(seeded.next(), otherSeed.next());
+}
+
+{
+  let devilHeadHits = 0;
+  for (let index = 0; index < 500; index += 1) {
+    const game = new CardGame({ seed: `seed-${index}` });
+    if (game.player.skills.includes(Skill.DEVIL_HEAD)) {
+      devilHeadHits += 1;
+    }
+  }
+  assert(devilHeadHits > 0);
 }
 
 {

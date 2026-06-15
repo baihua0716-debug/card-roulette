@@ -32,6 +32,9 @@ function nextMulberry32(state) {
 }
 
 function normalizeRandomState(state) {
+  if (state === null || state === undefined || state === "") {
+    return null;
+  }
   const number = Number(state);
   return Number.isFinite(number) ? number >>> 0 : null;
 }
